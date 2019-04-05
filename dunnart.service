@@ -1,0 +1,15 @@
+[Unit]
+Description=Sensor Daemon
+
+[Service]
+User=dunnart
+Type=simple
+WorkingDirectory=/opt/dunnart
+ExecStart=/opt/dunnart/dunnart
+Restart=on-failure
+RestartForceExitStatus=SIGPIPE
+GuessMainPID=true
+
+
+[Install]
+WantedBy=multi-user.target
