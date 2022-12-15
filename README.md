@@ -30,9 +30,9 @@ A device with this configuration:
 modules: [cpu, mem, fs]
 
 fs:
-    mountpoints: [root, usb]
-    root.path: "/"
-    usb.path: "/media/usb"
+  mountpoints: [root, home]
+  root.path: "/"
+  home.path: "/home"
 
 homeassistant:
   discovery:
@@ -49,9 +49,15 @@ produces these sensors in Home Assistant:
 
 ![Device Sensors](https://github.com/warthog618/dunnart/blob/master/readme/device-sensors.png?raw=true)
 
-and if the daemon is stopped, or the device stops for whatever reason, the sensors become unavailable:
+The cpu usage gives some indication of the system load with **dunnart** running.
+
+This particular device doesn't actually have a /home mountpoint (i.e. the config is intentionally broken) so it shows as disconnected, and the usage as unavailable.
+
+If the daemon is stopped, or the device stops for whatever reason then all the sensors become unavailable:
 
 ![Device Sensors - unavailable](https://github.com/warthog618/dunnart/blob/master/readme/device-sensors-unavailable.png?raw=true)
+
+with the exception of the device status itself which shows as disconnected/offline.
 
 ## Installation
 
@@ -62,7 +68,7 @@ The basic steps:
 - customise dunnart.yaml
 - copy the **dunnart** binary and config to your target
 - run the daemon to check everything works
-- configure the init system to start the daemon - an example dunnart.service is provided for systemd.
+- configure the init system to start the daemon - an example dunnart.service for systemd is provided.
 
 ## Background
 
@@ -70,7 +76,7 @@ This is a spin-off from a couple of daemons I wrote some time ago to control som
 
 I came to realise that *glances* was overkill for what I needed, and so extended those daemons to provide the system monitoring that I required instead.
 
-Then I realised that it would be useful to be able to monitor the other devices in my setup, so moved the common system monitoring into **dunnart** and made the old daemons special case extensions of that.
+I then realised that it would be useful to be able to monitor the other devices in my setup, so moved the common system monitoring into **dunnart** and the old daemons became special case extensions of that.
 
 ## Features
 
