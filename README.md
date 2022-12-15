@@ -53,7 +53,7 @@ The cpu usage gives some indication of the system load with **dunnart** running.
 
 This particular device doesn't actually have a /home mountpoint (i.e. the config is intentionally broken) so it shows as disconnected, and the usage as unavailable.
 
-If the daemon is stopped, or the device stops for whatever reason then all the sensors become unavailable:
+If the daemon is stopped, or the device stops for whatever reason, then all the sensors become unavailable:
 
 ![Device Sensors - unavailable](https://github.com/warthog618/dunnart/blob/master/readme/device-sensors-unavailable.png?raw=true)
 
@@ -82,9 +82,9 @@ I then realised that it would be useful to be able to monitor the other devices 
 
 ### Home Assistant Integration
 
-Sensors are discoverable by Home Assistant via the MQTT integration.  Discovery must be enabled in the MQTT integtation, and dunnart must be configured with the corresponding discovery topic prefix.
+Sensors are discoverable by Home Assistant via the MQTT integration.  Discovery must be enabled in the MQTT integtation, and **dunnart** must be configured with the corresponding discovery topic prefix.
 
-All sensors are assigned to a device, corresonding to the dunnart host, on Home Assistant.
+All sensors are assigned to a device, corresponding to the **dunnart** host, on Home Assistant.
 
 Sensor availability is automatically dependent on the availability of the **dunnart** daemon.
 
