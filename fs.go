@@ -113,42 +113,41 @@ func (m *Mount) update() bool {
 	changed := false
 	cmd := exec.Command("df", m.path)
 	out, err := cmd.Output()
-	mounted := err == nil
+	mounted := false
+	if err == nil {
+		r := bufio.NewReader(bytes.NewReader(out))
+		r.ReadLine()
+		line, _, err := r.ReadLine()
+		if err != nil {
+			log.Printf("error parsing df: %v", err)
+			return false
+		}
+		// split line on whitespace
+		fields := strings.Fields(string(line))
+		if len(fields) >= 6 && fields[5] == m.path {
+			mounted = true
+			total, err := strconv.ParseUint(fields[1], 10, 64)
+			if err != nil {
+				log.Printf("error parsing uint: %v", err)
+				return false
+			}
+			used, err := strconv.ParseUint(fields[2], 10, 64)
+			if err != nil {
+				log.Printf("error parsing uint: %v", err)
+				return false
+			}
+			used_pc := uint32((used * 10000) / total)
+			if used_pc != m.used {
+				m.used = used_pc
+				changed = true
+			}
+		}
+	}
 	if m.mounted != mounted {
 		changed = true
 		m.mounted = mounted
 	}
-	if !mounted {
-		return changed
-	}
-
-	r := bufio.NewReader(bytes.NewReader(out))
-	r.ReadLine()
-	line, _, err := r.ReadLine()
-	if err != nil {
-		log.Printf("error parsing df: %v", err)
-		return false
-	}
-	// split line on whitespace
-	fields := strings.Fields(string(line))
-	if len(fields) >= 6 && fields[5] == m.path {
-		total, err := strconv.ParseUint(fields[1], 10, 64)
-		if err != nil {
-			log.Printf("error parsing uint: %v", err)
-			return false
-		}
-		used, err := strconv.ParseUint(fields[2], 10, 64)
-		if err != nil {
-			log.Printf("error parsing uint: %v", err)
-			return false
-		}
-		used_pc := uint32((used * 10000) / total)
-		if used_pc != m.used {
-			m.used = used_pc
-			return true
-		}
-	}
-	return false
+	return changed
 }
 
 func (m *Mount) publish() {
