@@ -82,13 +82,13 @@ I then realised that it would be useful to be able to monitor the other devices 
 
 ### Home Assistant Integration
 
-Sensors are discoverable by Home Assistant via the MQTT integration.  Discovery must be enabled in the MQTT integtation, and **dunnart** must be configured with the corresponding discovery topic prefix.
+Sensors are discoverable by Home Assistant via the MQTT integration.  Discovery must be enabled in the MQTT integration, and **dunnart** must be configured with the corresponding discovery topic prefix.
 
 All sensors are assigned to a device, corresponding to the **dunnart** host, on Home Assistant.
 
 Sensor availability is automatically dependent on the availability of the **dunnart** daemon.
 
-If the `trigger_topic` is set in the configuration then **dunnart** will re-advertise the sensor config whenever HomeAssistant reconnects to MQTT, else the sensor config is sent once on startup with the retain flag set.
+If the `trigger_topic` is set in the configuration then **dunnart** will re-advertise the sensor config whenever Home Assistant reconnects to MQTT, else the sensor config is sent once on startup with the retain flag set.
 
 ### Modular Design
 
