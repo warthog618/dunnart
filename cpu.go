@@ -24,7 +24,7 @@ func init() {
 type CPU struct {
 	PolledSensor
 	// as read from /proc/stat
-	stats     [4]uint64
+	stats     CpuStats
 	temp      uint64
 	have_temp bool
 }
@@ -68,8 +68,11 @@ func (c *CPU) Config() []EntityConfig {
 	return config
 }
 
-func cpuStats() ([4]uint64, error) {
-	stats := [4]uint64{}
+// entries are [user, nicer, system, idle, iowait, irq, softirq, steal, quest, guest_nice]
+type CpuStats [10]uint64
+
+func cpuStats() (CpuStats, error) {
+	var stats CpuStats
 	f, err := os.Open("/proc/stat")
 	if err != nil {
 		return stats, err
@@ -81,10 +84,15 @@ func cpuStats() ([4]uint64, error) {
 		return stats, scanner.Err()
 	}
 	fields := strings.Fields(scanner.Text())
-	if fields[0] != "cpu" || len(fields) < 4 {
+	num_fields := len(fields)
+	if fields[0] != "cpu" || num_fields < 8 {
 		return stats, errors.Errorf("bad cpu line: %v", scanner.Text())
 	}
-	for i := 0; i < 4; i++ {
+	num_stats := num_fields - 1
+	if num_stats > len(stats) {
+		num_stats = len(stats)
+	}
+	for i := 0; i < num_stats; i++ {
 		v, err := strconv.ParseUint(fields[i+1], 10, 64)
 		if err != nil {
 			return stats, err
@@ -124,9 +132,9 @@ func (c *CPU) Refresh(forced bool) {
 		log.Printf("unable to read cpu stats: %v", err)
 		return
 	}
-	d := [4]uint64{}
+	d := CpuStats{}
 	total := uint64(0)
-	for i := 0; i < 4; i++ {
+	for i := 0; i < len(d); i++ {
 		d[i] = delta(c.stats[i], stats[i])
 		total += d[i]
 	}
