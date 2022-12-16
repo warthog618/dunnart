@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 # dunnart
 
-[![Build Status](https://img.shields.io/github/workflow/status/warthog618/dunnart/Go.svg?logo=github)](https://github.com/warthog618/dunnart/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/warthog618/dunnart/go.yml?logo=github&branch=master)](https://github.com/warthog618/dunnart/actions/workflows/go.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/warthog618/dunnart)](https://goreportcard.com/report/github.com/warthog618/dunnart)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/warthog618/dunnart/blob/master/LICENSE)
 
