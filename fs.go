@@ -29,13 +29,14 @@ type Mounts struct {
 
 func newMounts(cfg *config.Config) SyncCloser {
 	period := cfg.MustGet("period", config.WithDefaultValue("10m")).String()
-	defaultConfig := dict.New(dict.WithMap(map[string]interface{}{
+	defCfg := dict.New(dict.WithMap(map[string]interface{}{
 		"period": period}))
 	mm := []*Mount{}
 	mps := cfg.MustGet("mountpoints").StringSlice()
 	for _, name := range mps {
-		mm = append(mm, newMount(name, cfg.GetConfig(name,
-			config.WithDefault(defaultConfig))))
+		mCfg := cfg.GetConfig(name)
+		mCfg.Append(defCfg)
+		mm = append(mm, newMount(name, mCfg))
 	}
 	return &Mounts{mm: mm}
 }
