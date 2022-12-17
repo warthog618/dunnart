@@ -84,6 +84,9 @@ type PolledSensor struct {
 }
 
 func (s *PolledSensor) Close() {
+	if s == nil {
+		return
+	}
 	s.poller.Close()
 }
 
@@ -101,6 +104,9 @@ func (s *PolledSensor) SetPollPeriod(b []byte) {
 }
 
 func (s *PolledSensor) Sync(ps PubSub) {
+	if s == nil {
+		return
+	}
 	s.ps = ps
 	s.poller.Refresh()
 	ps.Subscribe(s.topic+"/rqd", func([]byte) { s.poller.Refresh() })
