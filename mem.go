@@ -14,36 +14,43 @@ import (
 	"strings"
 
 	"github.com/warthog618/config"
+	"github.com/warthog618/config/dict"
 )
 
 func init() {
 	RegisterModule("mem", newMem)
 }
 
-type MemStats struct {
-	mem_used  float32
-	swap_used float32
-	have_swap bool
-}
+type MemStats map[string]float32
 
 type Mem struct {
 	PolledSensor
+	entities []string
 	// mem and swap used percent as calced from /proc/meminfo
 	stats MemStats
 }
 
 func newMem(cfg *config.Config) SyncCloser {
-	period := cfg.MustGet("period", config.WithDefaultValue("1m")).Duration()
-	stats, err := memStats()
+	defCfg := dict.New(dict.WithMap(map[string]interface{}{
+		"period": "1m",
+		"entities": []string{
+			"ram_used_percent",
+			"swap_used_percent",
+		},
+	}))
+	cfg.Append(defCfg)
+	entities := cfg.MustGet("entities").StringSlice()
+	period := cfg.MustGet("period").Duration()
+	stats, err := memStats(entities)
 	if err != nil {
 		log.Fatalf("unable to read mem stats: %v", err)
 	}
-	mem := Mem{stats: stats}
+	mem := Mem{entities: entities, stats: stats}
 	mem.poller = NewPoller(period, mem.Refresh)
 	return &mem
 }
 
-func memStats() (MemStats, error) {
+func memStats(fields []string) (MemStats, error) {
 	names := []string{"MemTotal:", "MemAvailable:", "SwapTotal:", "SwapFree:"}
 	stats := [4]uint64{}
 	ms := MemStats{}
@@ -67,12 +74,13 @@ func memStats() (MemStats, error) {
 			}
 		}
 	}
-	if stats[0] != 0 && stats[1] != 0 {
-		ms.mem_used = float32(((stats[0]-stats[1])*10000)/stats[0]) / 100
-	}
-	ms.have_swap = stats[2] != 0
-	if ms.have_swap {
-		ms.swap_used = float32(((stats[2]-stats[3])*10000)/stats[2]) / 100
+	for _, field := range fields {
+		if field == "ram_used_percent" && stats[0] != 0 && stats[1] != 0 {
+			ms["ram_used_percent"] = float32(((stats[0]-stats[1])*10000)/stats[0]) / 100
+		}
+		if field == "swap_used_percent" && stats[2] != 0 {
+			ms["swap_used_percent"] = float32(((stats[2]-stats[3])*10000)/stats[2]) / 100
+		}
 	}
 
 	return ms, nil
@@ -80,16 +88,18 @@ func memStats() (MemStats, error) {
 
 func (m *Mem) Config() []EntityConfig {
 	var config []EntityConfig
-	cfg := map[string]interface{}{
-		"name":                "{{.NodeId}} RAM used percent",
-		"state_topic":         "~/mem",
-		"value_template":      "{{value_json.ram_used_percent}}",
-		"unit_of_measurement": "%",
-		"icon":                "mdi:gauge",
+	if _, ok := m.stats["ram_used_percent"]; ok {
+		cfg := map[string]interface{}{
+			"name":                "{{.NodeId}} RAM used percent",
+			"state_topic":         "~/mem",
+			"value_template":      "{{value_json.ram_used_percent}}",
+			"unit_of_measurement": "%",
+			"icon":                "mdi:gauge",
+		}
+		config = append(config, EntityConfig{"ram_used_percent", "sensor", cfg})
 	}
-	config = append(config, EntityConfig{"ram_used_percent", "sensor", cfg})
-	if m.stats.have_swap {
-		cfg = map[string]interface{}{
+	if _, ok := m.stats["swap_used_percent"]; ok {
+		cfg := map[string]interface{}{
 			"name":                "{{.NodeId}} swap used percent",
 			"state_topic":         "~/mem",
 			"value_template":      "{{value_json.swap_used_percent}}",
@@ -102,27 +112,25 @@ func (m *Mem) Config() []EntityConfig {
 }
 
 func (m *Mem) Refresh(forced bool) {
-	stats, err := memStats()
+	stats, err := memStats(m.entities)
 	if err != nil {
 		log.Printf("unable to read mem stats: %v", err)
 		return
 	}
 
 	var changed = forced
-	if stats.mem_used != m.stats.mem_used {
-		changed = true
-		m.stats.mem_used = stats.mem_used
-	}
-	if m.stats.have_swap && (stats.swap_used != m.stats.swap_used) {
-		changed = true
-		m.stats.swap_used = stats.swap_used
+	for k := range m.stats {
+		if stats[k] != m.stats[k] {
+			changed = true
+			m.stats[k] = stats[k]
+		}
 	}
 	if changed {
-		msg := fmt.Sprintf(`{"ram_used_percent": %.2f`, stats.mem_used)
-		if m.stats.have_swap {
-			msg += fmt.Sprintf(`, "swap_used_percent": %.2f`, stats.swap_used)
+		fields := []string{}
+		for k, v := range m.stats {
+			fields = append(fields, fmt.Sprintf(`"%s": %.2f`, k, v))
 		}
-		msg += "}"
+		msg := "{" + strings.Join(fields, ", ") + "}"
 		m.ps.Publish(m.topic, msg)
 	}
 }
