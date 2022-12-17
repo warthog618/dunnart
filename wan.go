@@ -26,6 +26,7 @@ func onlineString(online bool) string {
 }
 
 type WAN struct {
+	entities   map[string]bool
 	online     bool
 	ip         string
 	linkPoller *PolledSensor
@@ -61,50 +62,65 @@ func (w *WAN) Sync(ps PubSub) {
 }
 
 func newWAN(cfg *config.Config) SyncCloser {
-	cfg = cfg.GetConfig("",
-		config.WithDefault(
-			dict.New(dict.WithMap(map[string]interface{}{
-				"link.period": "1m",
-				"ip.period":   "15m"},
-			))))
+	defCfg := dict.New(dict.WithMap(
+		map[string]interface{}{
+			"link.period": "1m",
+			"ip.period":   "15m",
+			"entities":    []string{"link", "ip"},
+		},
+	))
+	cfg.Append(defCfg)
+	entities := map[string]bool{}
+	for _, e := range cfg.MustGet("entities").StringSlice() {
+		entities[e] = true
+	}
 	wan := WAN{
-		online: getLink(),
-		ps:     StubPubSub{},
+		entities: entities,
+		online:   getLink(),
+		ps:       StubPubSub{},
 	}
-	wan.linkPoller = &PolledSensor{
-		topic:  "",
-		poller: NewPoller(cfg.MustGet("link.period").Duration(), wan.RefreshLink),
-		ps:     StubPubSub{},
+	if wan.entities["link"] {
+		wan.linkPoller = &PolledSensor{
+			topic:  "",
+			poller: NewPoller(cfg.MustGet("link.period").Duration(), wan.RefreshLink),
+			ps:     StubPubSub{},
+		}
 	}
-	wan.ipPoller = &PolledSensor{
-		topic:  "/ip",
-		poller: NewPoller(cfg.MustGet("ip.period").Duration(), wan.RefreshIP),
-		ps:     StubPubSub{},
+	if wan.entities["ip"] {
+		wan.ipPoller = &PolledSensor{
+			topic:  "/ip",
+			poller: NewPoller(cfg.MustGet("ip.period").Duration(), wan.RefreshIP),
+			ps:     StubPubSub{},
+		}
 	}
-
 	return &wan
 }
 
 func (w *WAN) Config() []EntityConfig {
 	var config []EntityConfig
-	cfg := map[string]interface{}{
-		"name":         "WAN",
-		"state_topic":  "~/wan",
-		"device_class": "connectivity",
-		"payload_on":   "online",
-		"payload_off":  "offline",
+	if w.entities["link"] {
+		cfg := map[string]interface{}{
+			"name":         "WAN",
+			"state_topic":  "~/wan",
+			"device_class": "connectivity",
+			"payload_on":   "online",
+			"payload_off":  "offline",
+		}
+		config = append(config, EntityConfig{"link", "binary_sensor", cfg})
 	}
-	config = append(config, EntityConfig{"link", "binary_sensor", cfg})
-	cfg = map[string]interface{}{
-		"name":        "WAN IP",
-		"state_topic": "~/wan/ip",
-		"availability": []map[string]string{
-			{"topic": "~"},
-			{"topic": "~/wan"},
-		},
-		"availability_mode": "all",
+	if w.entities["ip"] {
+		cfg := map[string]interface{}{
+			"name":        "WAN IP",
+			"state_topic": "~/wan/ip"}
+		if w.entities["link"] {
+			cfg["availability"] = []map[string]string{
+				{"topic": "~"},
+				{"topic": "~/wan"},
+			}
+			cfg["availability_mode"] = "all"
+		}
+		config = append(config, EntityConfig{"ip", "sensor", cfg})
 	}
-	config = append(config, EntityConfig{"ip", "sensor", cfg})
 	return config
 }
 
