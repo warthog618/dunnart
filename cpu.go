@@ -15,6 +15,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/warthog618/config"
+	"github.com/warthog618/config/dict"
 )
 
 func init() {
@@ -23,43 +24,62 @@ func init() {
 
 type CPU struct {
 	PolledSensor
+	entities map[string]bool
 	// as read from /proc/stat
-	stats     CpuStats
-	temp      uint64
-	have_temp bool
+	stats        CpuStats
+	tfile        string
+	temp         uint64
+	idle_percent float32
 }
 
 func newCPU(cfg *config.Config) SyncCloser {
-	period := cfg.MustGet("period", config.WithDefaultValue("1m")).Duration()
-	have_temp := false
-	temp, err := cpuTemp()
-	if err == nil {
-		have_temp = true
+	defCfg := dict.New(dict.WithMap(map[string]interface{}{
+		"period": "1m",
+		"entities": []string{
+			"temperature",
+			"used_percent"},
+		"temperature.file": "/sys/class/thermal/thermal_zone0/temp",
+	}))
+	cfg.Append(defCfg)
+	period := cfg.MustGet("period").Duration()
+	entities := map[string]bool{}
+	for _, e := range cfg.MustGet("entities").StringSlice() {
+		entities[e] = true
 	}
 	stats, err := cpuStats()
 	if err != nil {
 		log.Fatalf("unable to read cpu stats: %v", err)
 	}
-	cpu := CPU{stats: stats, temp: temp, have_temp: have_temp}
+	cpu := CPU{entities: entities, stats: stats}
+	if entities["temperature"] {
+		tfile := cfg.MustGet("temperature.file").String()
+		temp, err := cpuTemp(tfile)
+		if err == nil {
+			cpu.temp = temp
+		}
+		cpu.tfile = tfile
+	}
 	cpu.poller = NewPoller(period, cpu.Refresh)
 	return &cpu
 }
 
 func (c *CPU) Config() []EntityConfig {
 	var config []EntityConfig
-	cfg := map[string]interface{}{
-		"name":                "{{.NodeId}} CPU used percent",
-		"state_topic":         "~/cpu",
-		"value_template":      "{{(100 - value_json.idle_percent) | round(2)}}",
-		"unit_of_measurement": "%",
-		"icon":                "mdi:gauge",
+	if c.entities["used_percent"] {
+		cfg := map[string]interface{}{
+			"name":                "{{.NodeId}} CPU used percent",
+			"state_topic":         "~/cpu",
+			"value_template":      "{{(100 - value_json.idle_percent) | round(2)}}",
+			"unit_of_measurement": "%",
+			"icon":                "mdi:gauge",
+		}
+		config = append(config, EntityConfig{"used_percent", "sensor", cfg})
 	}
-	config = append(config, EntityConfig{"used_percent", "sensor", cfg})
-	if c.have_temp {
-		cfg = map[string]interface{}{
+	if c.entities["temperature"] {
+		cfg := map[string]interface{}{
 			"name":                "{{.NodeId}} CPU temperature",
 			"state_topic":         "~/cpu",
-			"value_template":      "{{value_json.temperature}}",
+			"value_template":      "{{value_json.temperature | round(2) }}",
 			"device_class":        "temperature",
 			"unit_of_measurement": "°C",
 		}
@@ -102,8 +122,8 @@ func cpuStats() (CpuStats, error) {
 	return stats, nil
 }
 
-func cpuTemp() (uint64, error) {
-	f, err := os.Open("/sys/class/thermal/thermal_zone0/temp")
+func cpuTemp(tfile string) (uint64, error) {
+	f, err := os.Open(tfile)
 	if err != nil {
 		return 0, err
 	}
@@ -117,11 +137,9 @@ func cpuTemp() (uint64, error) {
 }
 
 func (c *CPU) Refresh(forced bool) {
-
-	idle_percent := float32(0)
 	changed := forced
-	temp, err := cpuTemp()
-	if err == nil {
+	temp, terr := cpuTemp(c.tfile)
+	if terr == nil {
 		if temp != c.temp {
 			changed = true
 			c.temp = temp
@@ -139,18 +157,24 @@ func (c *CPU) Refresh(forced bool) {
 		total += d[i]
 	}
 	if total != 0 {
-		idle_percent = float32((d[3]*10000)/total) / 100
-		if stats[3] != c.stats[3] {
+		idle_percent := float32((d[3]*10000)/total) / 100
+		if c.idle_percent != idle_percent {
 			changed = true
+			c.idle_percent = idle_percent
 		}
 	}
 	if changed {
-		value := fmt.Sprintf(`{"idle_percent": %.2f`, idle_percent)
-		if c.have_temp {
-			value += fmt.Sprintf(`, "temperature": %.2f`, float32(temp)/1000)
+		fields := []string{}
+		if c.entities["used_percent"] {
+			fields = append(fields, fmt.Sprintf(`"idle_percent": %.2f`, c.idle_percent))
 		}
-		value += "}"
-		c.ps.Publish(c.topic, value)
+		if c.entities["temperature"] {
+			if terr == nil {
+				fields = append(fields, fmt.Sprintf(`, "temperature": %.2f`, float32(temp)/1000))
+			}
+		}
+		msg := "{" + strings.Join(fields, ", ") + "}"
+		c.ps.Publish(c.topic, msg)
 	}
 	c.stats = stats
 }
