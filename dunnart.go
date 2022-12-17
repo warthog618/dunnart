@@ -35,27 +35,29 @@ var (
 )
 
 func loadConfig() *config.Config {
-	defaultConfig := (map[string]interface{}{
+	defaultConfig := map[string]interface{}{
 		"config-file":                        "dunnart.yaml",
 		"homeassistant.discovery.mac_source": []string{"eth0", "enp3s0", "wlan0"},
 		// no meaningful defaults....
 		//"mqtt.broker":         "",
 		//"mqtt.username":       "",
 		//"mqtt.password":       "",
-	})
+	}
 	host, err := os.Hostname()
 	if err == nil {
 		defaultConfig["mqtt.base_topic"] = "dunnart/" + host
 		defaultConfig["homeassistant.discovery.node_id"] = host
 	}
+	defCfg := dict.New(dict.WithMap(defaultConfig))
 	s := config.NewStack(pflag.New(pflag.WithFlags(
 		[]pflag.Flag{{Short: 'c', Name: "config-file"}})),
 		env.New(env.WithEnvPrefix("DUNNART_")),
 	)
-	cfg := config.New(s, config.WithDefault(dict.New(dict.WithMap(defaultConfig))))
+	cfg := config.New(s, config.WithDefault(defCfg))
 	s.Append(blob.NewConfigFile(
 		cfg, "config.file", "dunnart.yaml", cfgyaml.NewDecoder()))
-	return cfg
+	s.Append(defCfg)
+	return config.New(s)
 }
 
 func newMQTTOpts(cfg *config.Config) *mqtt.ClientOptions {
@@ -150,20 +152,31 @@ func main() {
 	}
 
 	mm := cfg.MustGet("modules").StringSlice()
+	var defCfg *dict.Getter
+	period := cfg.MustGet("period", config.WithDefaultValue("")).String()
+	if len(period) > 0 {
+		defCfg = dict.New(dict.WithMap(map[string]interface{}{
+			"period": period}))
+	}
+
 	for _, modName := range mm {
 		factory := moduleFactories[modName]
 		if factory == nil {
 			log.Fatalf("unsupported sensor: %s", modName)
 		}
-		mod := factory(cfg.GetConfig(modName))
+		modCfg := cfg.GetConfig(modName)
+		if defCfg != nil {
+			modCfg.Append(defCfg)
+		}
+		mod := factory(modCfg)
 		ss[modName] = mod
 		defer mod.Close()
 	}
 
 	connect := make(chan int)
 	mqttCfg := cfg.GetConfig("mqtt")
-	baseTopic := mqttCfg.MustGet("base_topic", config.WithDefaultValue("")).String()
-	mOpts := newMQTTOpts(cfg.GetConfig("mqtt")).
+	baseTopic := mqttCfg.MustGet("base_topic").String()
+	mOpts := newMQTTOpts(mqttCfg).
 		SetWill(baseTopic, "offline", mustQos, true).
 		SetOnConnectHandler(func(mc mqtt.Client) {
 			select {
