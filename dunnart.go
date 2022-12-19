@@ -6,10 +6,10 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -294,14 +294,9 @@ func (d *Discovery) connect(mc mqtt.Client) {
 func get_mac(cfg *config.Config) (string, error) {
 	ss := cfg.MustGet("mac_source").StringSlice()
 	for _, source := range ss {
-		f, err := os.Open(fmt.Sprintf("/sys/class/net/%s/address", source))
+		v, err := ioutil.ReadFile(fmt.Sprintf("/sys/class/net/%s/address", source))
 		if err == nil {
-			defer f.Close()
-
-			scanner := bufio.NewScanner(f)
-			if scanner.Scan() {
-				return scanner.Text(), nil
-			}
+			return strings.TrimSpace(string(v)), nil
 		}
 	}
 	return "", errors.New("can't find mac")
