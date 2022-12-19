@@ -104,6 +104,7 @@ The current sensors include:
 - ram used percent
 - swap used percent
 - file system mountpoint used percent
+- network interface connectivity and statistics
 - wan link availability
 - wan IP address
 

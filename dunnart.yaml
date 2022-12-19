@@ -1,9 +1,39 @@
-modules: [cpu, mem, fs]
+modules: [cpu, fs, mem, net]
+
+#period: 1m
+
+#wan:
+#  entities: [link, ip]
+#  link.period: 1m
+#  ip.period: 10m
+
+#cpu:
+#  entities: [used_percent, temperature]
 
 fs:
   mountpoints: [root, home]
   root.path: "/"
-  home.path: "/home"
+  home:
+    path: "/home"
+    period: 5m
+
+#mem:
+#  entities: [ram_used_percent, swap_used_percent]
+
+net:
+  interfaces: [enp3s0]
+#  period: 1m
+#  entities:
+#   - carrier
+#   - operstate
+#   - rx_bytes
+#   - rx_packets
+#   - rx_packet_rate
+#   - rx_throughput
+#   - tx_bytes
+#   - tx_packets
+#   - tx_packet_rate
+#   - tx_throughput
 
 homeassistant:
   discovery:
