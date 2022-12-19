@@ -98,6 +98,7 @@ func (w *WAN) Config() []EntityConfig {
 			"name":         "WAN",
 			"state_topic":  "~/wan",
 			"device_class": "connectivity",
+			"icon":         "mdi:wan",
 			"payload_on":   "online",
 			"payload_off":  "offline",
 		}
