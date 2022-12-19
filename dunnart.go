@@ -35,20 +35,19 @@ var (
 )
 
 func loadConfig() *config.Config {
-	defaultConfig := map[string]interface{}{
-		"config-file":                        "dunnart.yaml",
-		"homeassistant.discovery.mac_source": []string{"eth0", "enp3s0", "wlan0"},
-		// no meaningful defaults....
-		//"mqtt.broker":         "",
-		//"mqtt.username":       "",
-		//"mqtt.password":       "",
-	}
+	defCfg := dict.New()
+	defCfg.Set("config-file", "dunnart.yaml")
+	defCfg.Set("homeassistant.discovery.mac_source", []string{"eth0", "enp3s0", "wlan0"})
+	// no meaningful defaults....
+	//"mqtt.broker":         "",
+	//"mqtt.username":       "",
+	//"mqtt.password":       "",
+
 	host, err := os.Hostname()
 	if err == nil {
-		defaultConfig["mqtt.base_topic"] = "dunnart/" + host
-		defaultConfig["homeassistant.discovery.node_id"] = host
+		defCfg.Set("mqtt.base_topic", "dunnart/"+host)
+		defCfg.Set("homeassistant.discovery.node_id", host)
 	}
-	defCfg := dict.New(dict.WithMap(defaultConfig))
 	s := config.NewStack(pflag.New(pflag.WithFlags(
 		[]pflag.Flag{{Short: 'c', Name: "config-file"}})),
 		env.New(env.WithEnvPrefix("DUNNART_")),
@@ -224,9 +223,9 @@ type Discovery struct {
 
 func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) Discovery {
 	ents := map[string]string{}
-	prefix := cfg.MustGet("prefix", config.WithDefaultValue("")).String()
-	tt := cfg.MustGet("trigger_topic", config.WithDefaultValue("")).String()
-	if len(prefix) > 0 {
+	v, err := cfg.Get("prefix")
+	prefix := v.String()
+	if err == nil && len(prefix) > 0 {
 		mac, err := get_mac(cfg)
 		if err != nil {
 			log.Fatalf("discovery: %v", err)
@@ -258,13 +257,14 @@ func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) Di
 					baseCfg["unique_id"] = euid
 					baseCfg["object_id"] = strings.Join([]string{nodeId, modName, entity.name}, "_")
 					config := normalise_config(entity.config, baseCfg)
-					config = strings.Replace(config, "{{.NodeId}}", nodeId, -1)
+					config = strings.ReplaceAll(config, "{{.NodeId}}", nodeId)
 					ents[topic] = config
 				}
 			}
 		}
 	}
-	return Discovery{ents: ents, trigger_topic: tt}
+	tt, _ := cfg.Get("trigger_topic")
+	return Discovery{ents: ents, trigger_topic: tt.String()}
 }
 
 func (d *Discovery) advertise(mc mqtt.Client, retain bool) {

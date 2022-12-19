@@ -26,7 +26,6 @@ func onlineString(online bool) string {
 }
 
 type WAN struct {
-	entities   map[string]bool
 	online     bool
 	ip         string
 	linkPoller *PolledSensor
@@ -62,31 +61,27 @@ func (w *WAN) Sync(ps PubSub) {
 }
 
 func newWAN(cfg *config.Config) SyncCloser {
-	defCfg := dict.New(dict.WithMap(
-		map[string]interface{}{
-			"link.period": "1m",
-			"ip.period":   "15m",
-			"entities":    []string{"link", "ip"},
-		},
-	))
+	defCfg := dict.New()
+	defCfg.Set("link.period", "1m")
+	defCfg.Set("ip.period", "15m")
+	defCfg.Set("entities", []string{"link", "ip"})
 	cfg.Append(defCfg)
 	entities := map[string]bool{}
 	for _, e := range cfg.MustGet("entities").StringSlice() {
 		entities[e] = true
 	}
 	wan := WAN{
-		entities: entities,
-		online:   getLink(),
-		ps:       StubPubSub{},
+		online: getLink(),
+		ps:     StubPubSub{},
 	}
-	if wan.entities["link"] {
+	if entities["link"] {
 		wan.linkPoller = &PolledSensor{
 			topic:  "",
 			poller: NewPoller(cfg.MustGet("link.period").Duration(), wan.RefreshLink),
 			ps:     StubPubSub{},
 		}
 	}
-	if wan.entities["ip"] {
+	if entities["ip"] {
 		wan.ipPoller = &PolledSensor{
 			topic:  "/ip",
 			poller: NewPoller(cfg.MustGet("ip.period").Duration(), wan.RefreshIP),
@@ -98,7 +93,7 @@ func newWAN(cfg *config.Config) SyncCloser {
 
 func (w *WAN) Config() []EntityConfig {
 	var config []EntityConfig
-	if w.entities["link"] {
+	if w.linkPoller != nil {
 		cfg := map[string]interface{}{
 			"name":         "WAN",
 			"state_topic":  "~/wan",
@@ -108,11 +103,13 @@ func (w *WAN) Config() []EntityConfig {
 		}
 		config = append(config, EntityConfig{"link", "binary_sensor", cfg})
 	}
-	if w.entities["ip"] {
+	if w.ipPoller != nil {
 		cfg := map[string]interface{}{
 			"name":        "WAN IP",
-			"state_topic": "~/wan/ip"}
-		if w.entities["link"] {
+			"state_topic": "~/wan/ip",
+			"icon":        "mdi:ip",
+		}
+		if w.linkPoller != nil {
 			cfg["availability"] = []map[string]string{
 				{"topic": "~"},
 				{"topic": "~/wan"},

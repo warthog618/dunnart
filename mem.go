@@ -31,13 +31,12 @@ type Mem struct {
 }
 
 func newMem(cfg *config.Config) SyncCloser {
-	defCfg := dict.New(dict.WithMap(map[string]interface{}{
-		"period": "1m",
-		"entities": []string{
-			"ram_used_percent",
-			"swap_used_percent",
-		},
-	}))
+	defCfg := dict.New()
+	defCfg.Set("period", "1m")
+	defCfg.Set("entities", []string{
+		"ram_used_percent",
+		"swap_used_percent",
+	})
 	cfg.Append(defCfg)
 	entities := cfg.MustGet("entities").StringSlice()
 	period := cfg.MustGet("period").Duration()

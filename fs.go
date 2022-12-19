@@ -28,9 +28,8 @@ type Mounts struct {
 }
 
 func newMounts(cfg *config.Config) SyncCloser {
-	period := cfg.MustGet("period", config.WithDefaultValue("10m")).String()
-	defCfg := dict.New(dict.WithMap(map[string]interface{}{
-		"period": period}))
+	defCfg := dict.New()
+	defCfg.Set("period", cfg.MustGet("period", config.WithDefaultValue("10m")).String())
 	mm := []*Mount{}
 	mps := cfg.MustGet("mountpoints").StringSlice()
 	for _, name := range mps {

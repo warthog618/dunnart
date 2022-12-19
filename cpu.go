@@ -33,13 +33,12 @@ type CPU struct {
 }
 
 func newCPU(cfg *config.Config) SyncCloser {
-	defCfg := dict.New(dict.WithMap(map[string]interface{}{
-		"period": "1m",
-		"entities": []string{
-			"temperature",
-			"used_percent"},
-		"temperature.file": "/sys/class/thermal/thermal_zone0/temp",
-	}))
+	defCfg := dict.New()
+	defCfg.Set("period", "1m")
+	defCfg.Set("entities", []string{
+		"temperature",
+		"used_percent"})
+	defCfg.Set("temperature.file", "/sys/class/thermal/thermal_zone0/temp")
 	cfg.Append(defCfg)
 	period := cfg.MustGet("period").Duration()
 	entities := map[string]bool{}
