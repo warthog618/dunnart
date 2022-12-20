@@ -57,6 +57,12 @@ func (n *Nets) Config() []EntityConfig {
 	return config
 }
 
+func (n *Nets) Publish() {
+	for _, netif := range n.nn {
+		netif.publish()
+	}
+}
+
 func (n *Nets) Sync(ps PubSub) {
 	for _, netif := range n.nn {
 		netif.Sync(ps)
@@ -98,6 +104,25 @@ type NetIf struct {
 	ps            PubSub
 	gauges        map[string]Gauge
 	lastTime      time.Time
+	linkMsg       string
+	statsMsg      string
+}
+
+func (n *NetIf) publish() {
+	if n.linkPoller != nil {
+		n.publishLink()
+	}
+	if n.statsPoller != nil {
+		n.publishStats()
+	}
+}
+
+func (n *NetIf) publishLink() {
+	n.ps.Publish("/"+n.name, n.linkMsg)
+}
+
+func (n *NetIf) publishStats() {
+	n.ps.Publish("/"+n.name+"/stats", n.statsMsg)
 }
 
 func (n *NetIf) RefreshLink(forced bool) {
@@ -124,8 +149,8 @@ func (n *NetIf) RefreshLink(forced bool) {
 		if n.linkEntities["carrier"] {
 			fields = append(fields, fmt.Sprintf(`"carrier": "%s"`, n.link.carrier))
 		}
-		value := fmt.Sprintf("{%s}", strings.Join(fields, ", "))
-		n.ps.Publish("/"+n.name, value)
+		n.linkMsg = fmt.Sprintf("{%s}", strings.Join(fields, ", "))
+		n.publishLink()
 	}
 }
 
@@ -156,8 +181,8 @@ func (n *NetIf) RefreshStats(forced bool) {
 			fields = append(fields, fmt.Sprintf(`"%s": %0.2f`, r.rate, rate))
 		}
 	}
-	value := fmt.Sprintf("{%s}", strings.Join(fields, ", "))
-	n.ps.Publish("/"+n.name+"/stats", value)
+	n.statsMsg = fmt.Sprintf("{%s}", strings.Join(fields, ", "))
+	n.publishStats()
 }
 
 func (n *NetIf) read_status(fname string) string {

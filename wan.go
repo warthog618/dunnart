@@ -33,6 +33,15 @@ type WAN struct {
 	ps         PubSub
 }
 
+func (w *WAN) Publish() {
+	if w.linkPoller != nil {
+		w.ps.Publish("", onlineString(w.online))
+	}
+	if w.ipPoller != nil {
+		w.ps.Publish("/ip", w.ip)
+	}
+}
+
 func (w *WAN) RefreshLink(forced bool) {
 	online := getLink()
 	if w.online != online || forced {

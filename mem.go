@@ -28,6 +28,7 @@ type Mem struct {
 	entities []string
 	// mem and swap used percent as calced from /proc/meminfo
 	stats MemStats
+	msg   string
 }
 
 func newMem(cfg *config.Config) SyncCloser {
@@ -110,6 +111,10 @@ func (m *Mem) Config() []EntityConfig {
 	return config
 }
 
+func (m *Mem) Publish() {
+	m.ps.Publish(m.topic, m.msg)
+}
+
 func (m *Mem) Refresh(forced bool) {
 	stats, err := memStats(m.entities)
 	if err != nil {
@@ -129,7 +134,7 @@ func (m *Mem) Refresh(forced bool) {
 		for k, v := range m.stats {
 			fields = append(fields, fmt.Sprintf(`"%s": %.2f`, k, v))
 		}
-		msg := "{" + strings.Join(fields, ", ") + "}"
-		m.ps.Publish(m.topic, msg)
+		m.msg = "{" + strings.Join(fields, ", ") + "}"
+		m.Publish()
 	}
 }

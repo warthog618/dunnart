@@ -30,6 +30,7 @@ type CPU struct {
 	tfile        string
 	temp         uint64
 	idle_percent float32
+	msg          string
 }
 
 func newCPU(cfg *config.Config) SyncCloser {
@@ -37,7 +38,8 @@ func newCPU(cfg *config.Config) SyncCloser {
 	defCfg.Set("period", "1m")
 	defCfg.Set("entities", []string{
 		"temperature",
-		"used_percent"})
+		"used_percent",
+	})
 	defCfg.Set("temperature.file", "/sys/class/thermal/thermal_zone0/temp")
 	cfg.Append(defCfg)
 	period := cfg.MustGet("period").Duration()
@@ -135,6 +137,10 @@ func cpuTemp(tfile string) (uint64, error) {
 	return strconv.ParseUint(scanner.Text(), 10, 64)
 }
 
+func (c *CPU) Publish() {
+	c.ps.Publish(c.topic, c.msg)
+}
+
 func (c *CPU) Refresh(forced bool) {
 	changed := forced
 	temp, terr := cpuTemp(c.tfile)
@@ -168,12 +174,10 @@ func (c *CPU) Refresh(forced bool) {
 			fields = append(fields, fmt.Sprintf(`"idle_percent": %.2f`, c.idle_percent))
 		}
 		if c.entities["temperature"] {
-			if terr == nil {
-				fields = append(fields, fmt.Sprintf(`, "temperature": %.2f`, float32(temp)/1000))
-			}
+			fields = append(fields, fmt.Sprintf(`"temperature": %.2f`, float32(c.temp)/1000))
 		}
-		msg := "{" + strings.Join(fields, ", ") + "}"
-		c.ps.Publish(c.topic, msg)
+		c.msg = "{" + strings.Join(fields, ", ") + "}"
+		c.Publish()
 	}
 	c.stats = stats
 }

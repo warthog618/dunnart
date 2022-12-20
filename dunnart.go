@@ -37,6 +37,9 @@ var (
 func loadConfig() *config.Config {
 	defCfg := dict.New()
 	defCfg.Set("config-file", "dunnart.yaml")
+	defCfg.Set("homeassistant.birth_message_topic", "homeassistant/status")
+	defCfg.Set("homeassistant.publish_delay", "15s")
+	defCfg.Set("homeassistant.discovery.prefix", "homeassistant")
 	defCfg.Set("homeassistant.discovery.mac_source", []string{"eth0", "enp3s0", "wlan0"})
 	// no meaningful defaults....
 	//"mqtt.broker":         "",
@@ -71,11 +74,18 @@ func newMQTTOpts(cfg *config.Config) *mqtt.ClientOptions {
 	return opts
 }
 
-type Dunnart struct{}
+type Dunnart struct {
+	ps PubSub
+}
+
+func (d *Dunnart) Publish() {
+	d.ps.Publish("", "online")
+	d.ps.Publish("/version", version)
+}
 
 func (d *Dunnart) Sync(ps PubSub) {
-	ps.Publish("", "online")
-	ps.Publish("/version", version)
+	d.ps = ps
+	d.Publish()
 }
 
 func (m *Dunnart) Config() []EntityConfig {
@@ -152,10 +162,11 @@ func main() {
 
 	mm := cfg.MustGet("modules").StringSlice()
 	var defCfg *dict.Getter
-	period := cfg.MustGet("period", config.WithDefaultValue("")).String()
-	if len(period) > 0 {
-		defCfg = dict.New(dict.WithMap(map[string]interface{}{
-			"period": period}))
+	v, err := cfg.Get("period")
+	period := v.String()
+	if err == nil && len(period) > 0 {
+		defCfg = dict.New()
+		defCfg.Set("period", period)
 	}
 
 	for _, modName := range mm {
@@ -176,7 +187,7 @@ func main() {
 	mqttCfg := cfg.GetConfig("mqtt")
 	baseTopic := mqttCfg.MustGet("base_topic").String()
 	mOpts := newMQTTOpts(mqttCfg).
-		SetWill(baseTopic, "offline", mustQos, true).
+		SetWill(baseTopic, "offline", mustQos, false).
 		SetOnConnectHandler(func(mc mqtt.Client) {
 			select {
 			case connect <- 0:
@@ -189,6 +200,9 @@ func main() {
 	defer mc.Disconnect(0)
 
 	disco := newDiscovery(cfg.GetConfig("homeassistant.discovery"), ss, baseTopic)
+	habmTopic := cfg.MustGet("homeassistant.birth_message_topic").String()
+	// delay for when ha sees the ads for the first time and is slow subscribing
+	pdelay := cfg.MustGet("homeassistant.publish_delay").Duration()
 	go func() {
 		for {
 			select {
@@ -196,6 +210,7 @@ func main() {
 				return
 			case <-connect:
 				log.Print("mqtt connect")
+				disco.advertise(mc)
 				for modName, s := range ss {
 					t := baseTopic
 					if len(modName) > 0 {
@@ -204,7 +219,21 @@ func main() {
 					ps := MQTT{mc, t}
 					s.Sync(ps)
 				}
-				disco.connect(mc)
+				mc.Subscribe(habmTopic, mustQos,
+					func(mc mqtt.Client, msg mqtt.Message) {
+						if string(msg.Payload()) == "online" {
+							disco.advertise(mc)
+							time.Sleep(pdelay)
+							for _, s := range ss {
+								s.Publish()
+							}
+						}
+					})
+				time.Sleep(pdelay)
+				for _, s := range ss {
+					s.Publish()
+				}
+
 			}
 		}
 	}()
@@ -214,18 +243,12 @@ func main() {
 type Discovery struct {
 	// map from topic to config for discoverable entities
 	ents map[string]string
-	// The topic to subscribe to to detect HA MQTT reload.
-	// This triggers a re-publish of the configs.
-	// If empty then configs are only published once and have retain set and
-	// so will remain discoverable indefinitely.
-	trigger_topic string
 }
 
 func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) Discovery {
 	ents := map[string]string{}
-	v, err := cfg.Get("prefix")
-	prefix := v.String()
-	if err == nil && len(prefix) > 0 {
+	prefix := cfg.MustGet("prefix").String()
+	if len(prefix) > 0 {
 		mac, err := get_mac(cfg)
 		if err != nil {
 			log.Fatalf("discovery: %v", err)
@@ -263,32 +286,15 @@ func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) Di
 			}
 		}
 	}
-	tt, _ := cfg.Get("trigger_topic")
-	return Discovery{ents: ents, trigger_topic: tt.String()}
+	return Discovery{ents: ents}
 }
 
-func (d *Discovery) advertise(mc mqtt.Client, retain bool) {
+func (d *Discovery) advertise(mc mqtt.Client) {
 	log.Print("advertise for ha discovery")
 	for topic, config := range d.ents {
-		mc.Publish(topic, mustQos, retain, config)
+		mc.Publish(topic, mustQos, false, config)
 	}
 
-}
-
-func (d *Discovery) connect(mc mqtt.Client) {
-	if len(d.ents) == 0 {
-		return
-	}
-	triggered := len(d.trigger_topic) > 0
-	if triggered {
-		mc.Subscribe(d.trigger_topic, mustQos,
-			func(mc mqtt.Client, msg mqtt.Message) {
-				if string(msg.Payload()) == "online" {
-					d.advertise(mc, false)
-				}
-			})
-	}
-	d.advertise(mc, !triggered)
 }
 
 func get_mac(cfg *config.Config) (string, error) {
@@ -332,6 +338,8 @@ func config_contains(cfg map[string]interface{}, key string) bool {
 type Syncer interface {
 	// Check the current state of contained entities and publish any state changes.
 	Sync(PubSub)
+	// Publish the current state of the contained entities - no updates.
+	Publish()
 }
 
 type SyncCloser interface {
@@ -379,7 +387,7 @@ type MQTT struct {
 
 func (m MQTT) Publish(topic string, value interface{}) {
 	log.Printf("publish %s '%s'", m.baseTopic+topic, fmt.Sprint(value))
-	m.mc.Publish(m.baseTopic+topic, mustQos, true, fmt.Sprint(value))
+	m.mc.Publish(m.baseTopic+topic, mustQos, false, fmt.Sprint(value))
 }
 
 func (m MQTT) Subscribe(topic string, callback func([]byte)) {

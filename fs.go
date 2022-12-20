@@ -48,6 +48,12 @@ func (m *Mounts) Config() []EntityConfig {
 	return config
 }
 
+func (m *Mounts) Publish() {
+	for _, mount := range m.mm {
+		mount.Publish()
+	}
+}
+
 func (m *Mounts) Sync(ps PubSub) {
 	for _, mount := range m.mm {
 		mount.Sync(ps)
@@ -63,6 +69,7 @@ type Mount struct {
 	path    string
 	mounted bool
 	used    uint32
+	msg     string
 }
 
 type MountConfig struct {
@@ -150,16 +157,8 @@ func (m *Mount) update() bool {
 	return changed
 }
 
-func (m *Mount) publish() {
-	vv := []string{}
-	if m.mounted {
-		vv = append(vv, `"mounted": "on"`)
-		vv = append(vv, fmt.Sprintf(`"used_percent": %.2f`, float32(m.used)/100))
-	} else {
-		vv = append(vv, `"mounted": "off"`)
-	}
-	value := fmt.Sprintf("{%s}", strings.Join(vv, ", "))
-	m.ps.Publish(m.topic, value)
+func (m *Mount) Publish() {
+	m.ps.Publish(m.topic, m.msg)
 }
 
 func (m *Mount) Refresh(forced bool) {
@@ -168,6 +167,14 @@ func (m *Mount) Refresh(forced bool) {
 		changed = true
 	}
 	if changed {
-		m.publish()
+		vv := []string{}
+		if m.mounted {
+			vv = append(vv, `"mounted": "on"`)
+			vv = append(vv, fmt.Sprintf(`"used_percent": %.2f`, float32(m.used)/100))
+		} else {
+			vv = append(vv, `"mounted": "off"`)
+		}
+		m.msg = fmt.Sprintf("{%s}", strings.Join(vv, ", "))
+		m.Publish()
 	}
 }
