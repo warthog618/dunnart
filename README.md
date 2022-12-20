@@ -34,11 +34,6 @@ fs:
   root.path: "/"
   home.path: "/home"
 
-homeassistant:
-  discovery:
-    prefix: homeassistant
-    trigger_topic: homeassistant/status
-
 mqtt:
   broker: tcp://<mqtt server>:1883
   username: <username>
