@@ -83,7 +83,7 @@ All sensors are assigned to a device, corresponding to the **dunnart** host, on 
 
 Sensor availability is automatically dependent on the availability of the **dunnart** daemon.
 
-If the `trigger_topic` is set in the configuration then **dunnart** will re-advertise the sensor config whenever Home Assistant reconnects to MQTT, else the sensor config is sent once on startup with the retain flag set.
+**dunnart** subscribes to the Home Assistant birth message topic and will re-advertise the sensor config and republish the sensor states whenever Home Assistant reconnects to MQTT.
 
 ### Modular Design
 
