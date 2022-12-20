@@ -35,10 +35,11 @@ net:
 #   - tx_packet_rate
 #   - tx_throughput
 
-homeassistant:
-  discovery:
-    prefix: homeassistant
-    trigger_topic: homeassistant/status
+#homeassistant:
+#  birth_message_topic: homeassistant/status
+#  publish_delay: 15s
+#  discovery:
+#    prefix: homeassistant
 
 mqtt:
   broker: "tcp://<mqtt server>:1883"
