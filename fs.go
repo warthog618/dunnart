@@ -80,7 +80,7 @@ type MountConfig struct {
 func newMount(name string, cfg *config.Config) *Mount {
 	m := Mount{name: name, path: cfg.MustGet("path").String()}
 	m.topic = "/" + name
-	m.poller = NewPoller(cfg.MustGet("period", config.WithDefaultValue("10m")).Duration(),
+	m.poller = NewPoller(cfg.MustGet("period").Duration(),
 		m.Refresh)
 	return &m
 }
@@ -91,7 +91,7 @@ func (m *Mount) Config() []EntityConfig {
 	cfg := map[string]interface{}{
 		"name":           "{{.NodeId}} fs " + m.name,
 		"state_topic":    mtopic,
-		"value_template": "{{value_json.mounted}}",
+		"value_template": "{{value_json.mounted | is_defined}}",
 		"device_class":   "connectivity",
 		"icon":           "mdi:harddisk",
 		"payload_on":     "on",
@@ -107,7 +107,7 @@ func (m *Mount) Config() []EntityConfig {
 		"availability": []map[string]string{
 			{"topic": "~"},
 			{"topic": mtopic,
-				"value_template":        "{{value_json.mounted}}",
+				"value_template":        "{{value_json.mounted | is_defined | default('off')}}",
 				"payload_available":     "on",
 				"payload_not_available": "off",
 			},

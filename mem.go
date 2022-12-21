@@ -92,7 +92,7 @@ func (m *Mem) Config() []EntityConfig {
 		cfg := map[string]interface{}{
 			"name":                "{{.NodeId}} RAM used percent",
 			"state_topic":         "~/mem",
-			"value_template":      "{{value_json.ram_used_percent}}",
+			"value_template":      "{{value_json.ram_used_percent | is_defined}}",
 			"unit_of_measurement": "%",
 			"icon":                "mdi:gauge",
 		}
@@ -102,7 +102,7 @@ func (m *Mem) Config() []EntityConfig {
 		cfg := map[string]interface{}{
 			"name":                "{{.NodeId}} swap used percent",
 			"state_topic":         "~/mem",
-			"value_template":      "{{value_json.swap_used_percent}}",
+			"value_template":      "{{value_json.swap_used_percent | is_defined}}",
 			"unit_of_measurement": "%",
 			"icon":                "mdi:gauge",
 		}
