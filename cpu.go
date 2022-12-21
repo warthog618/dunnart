@@ -28,7 +28,8 @@ type CPU struct {
 	// as read from /proc/stat
 	stats        CpuStats
 	tfile        string
-	temp         uint64
+	temp         int64
+	have_temp    bool
 	idle_percent float32
 	msg          string
 }
@@ -123,7 +124,7 @@ func cpuStats() (CpuStats, error) {
 	return stats, nil
 }
 
-func cpuTemp(tfile string) (uint64, error) {
+func cpuTemp(tfile string) (int64, error) {
 	f, err := os.Open(tfile)
 	if err != nil {
 		return 0, err
@@ -134,7 +135,7 @@ func cpuTemp(tfile string) (uint64, error) {
 	if !scanner.Scan() {
 		return 0, scanner.Err()
 	}
-	return strconv.ParseUint(scanner.Text(), 10, 64)
+	return strconv.ParseInt(scanner.Text(), 10, 64)
 }
 
 func (c *CPU) Publish() {
@@ -143,11 +144,12 @@ func (c *CPU) Publish() {
 
 func (c *CPU) Refresh(forced bool) {
 	changed := forced
-	temp, terr := cpuTemp(c.tfile)
-	if terr == nil {
+	temp, err := cpuTemp(c.tfile)
+	if err == nil {
 		if temp != c.temp {
 			changed = true
 			c.temp = temp
+			c.have_temp = true
 		}
 	}
 	stats, err := cpuStats()
@@ -173,7 +175,7 @@ func (c *CPU) Refresh(forced bool) {
 		if c.entities["used_percent"] {
 			fields = append(fields, fmt.Sprintf(`"idle_percent": %.2f`, c.idle_percent))
 		}
-		if c.entities["temperature"] {
+		if c.have_temp {
 			fields = append(fields, fmt.Sprintf(`"temperature": %.2f`, float32(c.temp)/1000))
 		}
 		c.msg = "{" + strings.Join(fields, ", ") + "}"
