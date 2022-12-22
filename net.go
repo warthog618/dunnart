@@ -1,7 +1,6 @@
-// Copyright © 2022 Kent Gibson <warthog618@gmail.com>.
+// SPDX-FileCopyrightText: 2022 Kent Gibson <warthog618@gmail.com>
 //
-// Use of this source code is governed by an MIT-style
-// license that can be found in the LICENSE file.
+// SPDX-License-Identifier: MIT
 
 package main
 
