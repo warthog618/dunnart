@@ -26,7 +26,7 @@ type CPU struct {
 	entities map[string]bool
 	// as read from /proc/stat
 	stats        CpuStats
-	tfile        string
+	tpath        string
 	temp         int64
 	have_temp    bool
 	idle_percent float32
@@ -40,7 +40,7 @@ func newCPU(cfg *config.Config) SyncCloser {
 		"temperature",
 		"used_percent",
 	})
-	defCfg.Set("temperature.file", "/sys/class/thermal/thermal_zone0/temp")
+	defCfg.Set("temperature.path", "/sys/class/thermal/thermal_zone0/temp")
 	cfg.Append(defCfg)
 	period := cfg.MustGet("period").Duration()
 	entities := map[string]bool{}
@@ -53,12 +53,12 @@ func newCPU(cfg *config.Config) SyncCloser {
 	}
 	cpu := CPU{entities: entities, stats: stats}
 	if entities["temperature"] {
-		tfile := cfg.MustGet("temperature.file").String()
-		temp, err := cpuTemp(tfile)
+		tpath := cfg.MustGet("temperature.path").String()
+		temp, err := cpuTemp(tpath)
 		if err == nil {
 			cpu.temp = temp
 		}
-		cpu.tfile = tfile
+		cpu.tpath = tpath
 	}
 	cpu.poller = NewPoller(period, cpu.Refresh)
 	return &cpu
@@ -123,8 +123,8 @@ func cpuStats() (CpuStats, error) {
 	return stats, nil
 }
 
-func cpuTemp(tfile string) (int64, error) {
-	f, err := os.Open(tfile)
+func cpuTemp(tpath string) (int64, error) {
+	f, err := os.Open(tpath)
 	if err != nil {
 		return 0, err
 	}
@@ -143,7 +143,7 @@ func (c *CPU) Publish() {
 
 func (c *CPU) Refresh(forced bool) {
 	changed := forced
-	temp, err := cpuTemp(c.tfile)
+	temp, err := cpuTemp(c.tpath)
 	if err == nil {
 		if temp != c.temp {
 			changed = true

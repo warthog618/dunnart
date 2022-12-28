@@ -37,7 +37,7 @@ func loadConfig() *config.Config {
 	defCfg := dict.New()
 	defCfg.Set("config-file", "dunnart.yaml")
 	defCfg.Set("homeassistant.birth_message_topic", "homeassistant/status")
-	defCfg.Set("homeassistant.publish_delay", "15s")
+	defCfg.Set("homeassistant.discovery.status_delay", "15s")
 	defCfg.Set("homeassistant.discovery.prefix", "homeassistant")
 	defCfg.Set("homeassistant.discovery.mac_source", []string{"eth0", "enp3s0", "wlan0"})
 	// no meaningful defaults....
@@ -201,7 +201,7 @@ func main() {
 	disco := newDiscovery(cfg.GetConfig("homeassistant.discovery"), ss, baseTopic)
 	habmTopic := cfg.MustGet("homeassistant.birth_message_topic").String()
 	// delay for when ha sees the ads for the first time and is slow subscribing
-	pdelay := cfg.MustGet("homeassistant.publish_delay").Duration()
+	sdelay := cfg.MustGet("homeassistant.discovery.status_delay").Duration()
 	go func() {
 		for {
 			select {
@@ -222,13 +222,13 @@ func main() {
 					func(mc mqtt.Client, msg mqtt.Message) {
 						if string(msg.Payload()) == "online" {
 							disco.advertise(mc)
-							time.Sleep(pdelay)
+							time.Sleep(sdelay)
 							for _, s := range ss {
 								s.Publish()
 							}
 						}
 					})
-				time.Sleep(pdelay)
+				time.Sleep(sdelay)
 				for _, s := range ss {
 					s.Publish()
 				}
