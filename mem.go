@@ -24,7 +24,7 @@ type MemStats map[string]float32
 
 type Mem struct {
 	PolledSensor
-	entities []string
+	entities map[string]bool
 	// mem and swap used percent as calced from /proc/meminfo
 	stats MemStats
 	msg   string
@@ -38,7 +38,10 @@ func newMem(cfg *config.Config) SyncCloser {
 		"swap_used_percent",
 	})
 	cfg.Append(defCfg)
-	entities := cfg.MustGet("entities").StringSlice()
+	entities := map[string]bool{}
+	for _, e := range cfg.MustGet("entities").StringSlice() {
+		entities[e] = true
+	}
 	period := cfg.MustGet("period").Duration()
 	stats, err := memStats(entities)
 	if err != nil {
@@ -49,7 +52,7 @@ func newMem(cfg *config.Config) SyncCloser {
 	return &mem
 }
 
-func memStats(fields []string) (MemStats, error) {
+func memStats(fields map[string]bool) (MemStats, error) {
 	names := []string{"MemTotal:", "MemAvailable:", "SwapTotal:", "SwapFree:"}
 	stats := [4]uint64{}
 	ms := MemStats{}
@@ -73,13 +76,11 @@ func memStats(fields []string) (MemStats, error) {
 			}
 		}
 	}
-	for _, field := range fields {
-		if field == "ram_used_percent" && stats[0] != 0 && stats[1] != 0 {
-			ms["ram_used_percent"] = float32(((stats[0]-stats[1])*10000)/stats[0]) / 100
-		}
-		if field == "swap_used_percent" && stats[2] != 0 {
-			ms["swap_used_percent"] = float32(((stats[2]-stats[3])*10000)/stats[2]) / 100
-		}
+	if fields["ram_used_percent"] && stats[0] != 0 && stats[1] != 0 {
+		ms["ram_used_percent"] = float32(((stats[0]-stats[1])*10000)/stats[0]) / 100
+	}
+	if fields["swap_used_percent"] && stats[2] != 0 {
+		ms["swap_used_percent"] = float32(((stats[2]-stats[3])*10000)/stats[2]) / 100
 	}
 
 	return ms, nil
@@ -87,7 +88,7 @@ func memStats(fields []string) (MemStats, error) {
 
 func (m *Mem) Config() []EntityConfig {
 	var config []EntityConfig
-	if _, ok := m.stats["ram_used_percent"]; ok {
+	if m.entities["ram_used_percent"] {
 		cfg := map[string]interface{}{
 			"name":                "{{.NodeId}} RAM used percent",
 			"state_topic":         "~/mem",
@@ -97,7 +98,7 @@ func (m *Mem) Config() []EntityConfig {
 		}
 		config = append(config, EntityConfig{"ram_used_percent", "sensor", cfg})
 	}
-	if _, ok := m.stats["swap_used_percent"]; ok {
+	if m.entities["swap_used_percent"] {
 		cfg := map[string]interface{}{
 			"name":                "{{.NodeId}} swap used percent",
 			"state_topic":         "~/mem",
@@ -122,12 +123,12 @@ func (m *Mem) Refresh(forced bool) {
 	}
 
 	var changed = forced
-	for k := range m.stats {
+	for k := range stats {
 		if stats[k] != m.stats[k] {
 			changed = true
-			m.stats[k] = stats[k]
 		}
 	}
+	m.stats = stats
 	if changed {
 		fields := []string{}
 		for k, v := range m.stats {
