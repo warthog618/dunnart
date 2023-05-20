@@ -30,6 +30,7 @@ type CPU struct {
 	temp         int64
 	have_temp    bool
 	idle_percent float32
+	uptime       float64
 	msg          string
 }
 
@@ -86,6 +87,16 @@ func (c *CPU) Config() []EntityConfig {
 		}
 		config = append(config, EntityConfig{"temperature", "sensor", cfg})
 	}
+	if c.entities["uptime"] {
+		cfg := map[string]interface{}{
+			"name":                "{{.NodeId}} Uptime",
+			"state_topic":         "~/cpu",
+			"value_template":      "{{value_json.uptime | int }}",
+			"device_class":        "duration",
+			"unit_of_measurement": "s",
+		}
+		config = append(config, EntityConfig{"uptime", "sensor", cfg})
+	}
 	return config
 }
 
@@ -141,8 +152,28 @@ func (c *CPU) Publish() {
 	c.ps.Publish(c.topic, c.msg)
 }
 
+func uptime() (float64, error) {
+	f, err := os.Open("/proc/uptime")
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		return 0, scanner.Err()
+	}
+	return strconv.ParseFloat(strings.Fields(scanner.Text())[0], 32)
+}
+
 func (c *CPU) Refresh(forced bool) {
 	changed := forced
+	if c.entities["uptime"] {
+		if uptime, err := uptime(); err == nil {
+			c.uptime = uptime
+			changed = true
+		}
+	}
 	temp, err := cpuTemp(c.tpath)
 	if err == nil {
 		if temp != c.temp {
@@ -176,6 +207,9 @@ func (c *CPU) Refresh(forced bool) {
 		}
 		if c.have_temp {
 			fields = append(fields, fmt.Sprintf(`"temperature": %.2f`, float32(c.temp)/1000))
+		}
+		if c.entities["uptime"] {
+			fields = append(fields, fmt.Sprintf(`"uptime": %.2f`, c.uptime))
 		}
 		c.msg = "{" + strings.Join(fields, ", ") + "}"
 		c.Publish()

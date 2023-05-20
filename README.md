@@ -121,6 +121,7 @@ Supported entities:
 
 - used_percent
 - temperature
+- uptime
 
 #### Memory (mem)
 
