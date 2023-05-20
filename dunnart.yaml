@@ -13,7 +13,10 @@ modules: [cpu, fs, mem, net]
 #  ip.period: 10m
 
 #cpu:
-#  entities: [used_percent, temperature]
+#  entities:
+#   - used_percent
+#   - temperature
+##  - uptime
 #  period: 1m
 #  temperature.path: /sys/class/thermal/thermal_zone0/temp
 
