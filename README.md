@@ -176,6 +176,26 @@ Supported entities:
 - tx_packet_rate
 - tx_throughput
 
+#### System Info
+
+|Field|Description|Default|
+|-----|------|:-----:|
+|entities|The system info sensors to expose|[kernel_release, os_release]|
+|period|The polling period for the system info sensors|6h|
+
+The info is drawn from `uname` and `/etc/os-release`.
+
+Supported entities:
+
+- machine (uname -m)
+- kernel_name (uname -s)
+- kernel_release (uname -r)
+- kerrnel_version (uname -v)
+- machine (uname -m)
+- os_name (/etc/os-release NAME)
+- os_release (/etc/os-release PRETTY_NAME)
+- os_version (/etc/os-release/VERSION)
+
 #### WAN
 
 |Field|Description|Default|
@@ -213,7 +233,7 @@ Sensor availability is automatically dependent on the availability of the **dunn
 
 Entities are grouped into modules, so groups of entities can be easily enabled or disabled.  Modules must be explicitly enabled, and disabled modules use no resources.
 
-The existing set of provided modules includes cpu, memory, file system and wan.  The modules and entities provided are currently minimal, being those I found sufficient to monitor the health of my setup.
+The existing set of provided modules includes cpu, memory, file system, net and wan.  The modules and entities provided are currently minimal, being those I found sufficient to monitor the health of my setup.
 
 The current entities include:
 
@@ -224,6 +244,8 @@ The current entities include:
 - swap used percentage
 - file system mountpoint used percentage
 - network interface connectivity and statistics
+- os and kernel version
+- uptime
 - wan link availability
 - wan IP address
 

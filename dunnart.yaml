@@ -46,6 +46,17 @@ net:
 ##  - tx_packet_rate
 #   - tx_throughput
 
+#sys_info:
+#  period: 6h
+#  entities:
+##  - kernel_name
+#   - kernel_release
+##  - kernel_version
+##  - machine
+##  - os_name
+#   - os_release
+##  - os_version
+
 #homeassistant:
 #  birth_message_topic: homeassistant/status
 #  discovery:
