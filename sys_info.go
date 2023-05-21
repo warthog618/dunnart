@@ -77,7 +77,7 @@ func (s *SystemInfo) Config() []EntityConfig {
 			"name":           "{{.NodeId}} " + ents[e].ha_name,
 			"state_topic":    "~/sys_info",
 			"value_template": fmt.Sprintf("{{value_json.%s}}", e),
-			"icon":           "mdi:information",
+			"icon":           "mdi:information-outline",
 		}
 		config = append(config, EntityConfig{e, "sensor", cfg})
 	}
