@@ -23,6 +23,9 @@ pi0:
 pi2:
 	GOARCH=arm GOARM=7 $(GOBUILD) $(LDFLAGS)
 
+pi4:
+	GOARCH=arm64 $(GOBUILD) $(LDFLAGS)
+
 mips:
 	GOARCH=mips GOMIPS=softfloat $(GOBUILD) $(LDFLAGS)
 
