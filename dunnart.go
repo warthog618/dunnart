@@ -90,7 +90,7 @@ func (d *Dunnart) Sync(ps PubSub) {
 func (m *Dunnart) Config() []EntityConfig {
 	var config []EntityConfig
 	cfg := map[string]interface{}{
-		"name":         "{{.NodeId}} status",
+		"name":         "status",
 		"object_id":    "{{.NodeId}}_status",
 		"state_topic":  "~",
 		"device_class": "connectivity",

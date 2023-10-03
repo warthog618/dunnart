@@ -74,7 +74,7 @@ func (s *SystemInfo) Config() []EntityConfig {
 	var config []EntityConfig
 	for _, e := range s.entities {
 		cfg := map[string]interface{}{
-			"name":           "{{.NodeId}} " + ents[e].ha_name,
+			"name":           ents[e].ha_name,
 			"state_topic":    "~/sys_info",
 			"value_template": fmt.Sprintf("{{value_json.%s}}", e),
 			"icon":           "mdi:information-outline",

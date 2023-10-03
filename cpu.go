@@ -69,7 +69,7 @@ func (c *CPU) Config() []EntityConfig {
 	var config []EntityConfig
 	if c.entities["used_percent"] {
 		cfg := map[string]interface{}{
-			"name":                "{{.NodeId}} CPU used percent",
+			"name":                "CPU used percent",
 			"state_topic":         "~/cpu",
 			"value_template":      "{{(100 - value_json.idle_percent) | round(2)}}",
 			"unit_of_measurement": "%",
@@ -79,7 +79,7 @@ func (c *CPU) Config() []EntityConfig {
 	}
 	if c.entities["temperature"] {
 		cfg := map[string]interface{}{
-			"name":                "{{.NodeId}} CPU temperature",
+			"name":                "CPU temperature",
 			"state_topic":         "~/cpu",
 			"value_template":      "{{value_json.temperature | round(2) }}",
 			"device_class":        "temperature",
@@ -89,7 +89,7 @@ func (c *CPU) Config() []EntityConfig {
 	}
 	if c.entities["uptime"] {
 		cfg := map[string]interface{}{
-			"name":                "{{.NodeId}} Uptime",
+			"name":                "Uptime",
 			"state_topic":         "~/cpu",
 			"value_template":      "{{value_json.uptime | int }}",
 			"device_class":        "duration",

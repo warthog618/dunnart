@@ -320,7 +320,7 @@ func (n *NetIf) Config() []EntityConfig {
 	if n.linkPoller != nil {
 		if n.linkEntities["operstate"] {
 			cfg := map[string]interface{}{
-				"name":           "{{.NodeId}} net " + n.name,
+				"name":           "net " + n.name,
 				"state_topic":    "~/net/" + n.name,
 				"value_template": "{{value_json.operstate | is_defined}}",
 				"device_class":   "connectivity",
@@ -334,7 +334,7 @@ func (n *NetIf) Config() []EntityConfig {
 		}
 		if n.linkEntities["carrier"] {
 			cfg := map[string]interface{}{
-				"name":           "{{.NodeId}} net " + n.name + " carrier",
+				"name":           "net " + n.name + " carrier",
 				"state_topic":    "~/net/" + n.name,
 				"value_template": "{{value_json.carrier | is_defined}}",
 				"device_class":   "connectivity",
@@ -349,7 +349,7 @@ func (n *NetIf) Config() []EntityConfig {
 	}
 	for e := range n.statsEntities {
 		cfg := map[string]interface{}{
-			"name": fmt.Sprintf("{{.NodeId}} net %s %s", n.name,
+			"name": fmt.Sprintf("net %s %s", n.name,
 				strings.ReplaceAll(e, "_", " ")),
 			"state_topic":    fmt.Sprintf("~/net/%s/stats", n.name),
 			"value_template": fmt.Sprintf("{{value_json.%s | is_defined}}", e),

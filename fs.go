@@ -88,7 +88,7 @@ func (m *Mount) Config() []EntityConfig {
 	var config []EntityConfig
 	mtopic := "~/fs" + m.topic
 	cfg := map[string]interface{}{
-		"name":           "{{.NodeId}} fs " + m.name,
+		"name":           "fs " + m.name,
 		"state_topic":    mtopic,
 		"value_template": "{{value_json.mounted | is_defined}}",
 		"device_class":   "connectivity",
@@ -98,7 +98,7 @@ func (m *Mount) Config() []EntityConfig {
 	}
 	config = append(config, EntityConfig{m.name, "binary_sensor", cfg})
 	cfg = map[string]interface{}{
-		"name":                "{{.NodeId}} fs " + m.name + " used percent",
+		"name":                "fs " + m.name + " used percent",
 		"state_topic":         mtopic,
 		"value_template":      "{{(value_json.used_percent) | round(2)}}",
 		"unit_of_measurement": "%",
