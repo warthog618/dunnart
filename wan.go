@@ -46,6 +46,9 @@ func (w *WAN) RefreshLink(forced bool) {
 	if w.online != online || forced {
 		w.online = online
 		w.ps.Publish("", onlineString(w.online))
+		if w.ipPoller != nil {
+			w.ipPoller.poller.Refresh(false);
+		}
 	}
 }
 
@@ -117,13 +120,6 @@ func (w *WAN) Config() []EntityConfig {
 			"name":        "WAN IP",
 			"state_topic": "~/wan/ip",
 			"icon":        "mdi:ip",
-		}
-		if w.linkPoller != nil {
-			cfg["availability"] = []map[string]string{
-				{"topic": "~"},
-				{"topic": "~/wan"},
-			}
-			cfg["availability_mode"] = "all"
 		}
 		config = append(config, EntityConfig{"ip", "sensor", cfg})
 	}

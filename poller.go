@@ -54,9 +54,9 @@ func NewPoller(period time.Duration, f func(bool)) *Poller {
 	return &p
 }
 
-func (p *Poller) Refresh() {
+func (p *Poller) Refresh(forced bool) {
 	select {
-	case p.refresh <- true:
+	case p.refresh <- forced:
 	case <-p.done:
 	}
 }
@@ -107,8 +107,8 @@ func (s *PolledSensor) Sync(ps PubSub) {
 		return
 	}
 	s.ps = ps
-	s.poller.Refresh()
-	ps.Subscribe(s.topic+"/rqd", func([]byte) { s.poller.Refresh() })
+	s.poller.Refresh(true)
+	ps.Subscribe(s.topic+"/rqd", func([]byte) { s.poller.Refresh(true) })
 	ps.Publish(s.topic+"/poll_period", s.poller.period)
 	ps.Subscribe(s.topic+"/rqd/poll_period", s.SetPollPeriod)
 }
