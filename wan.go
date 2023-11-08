@@ -130,15 +130,27 @@ func (w *WAN) Config() []EntityConfig {
 	return config
 }
 
-func getLink() bool {
+type Dialer func(ctx context.Context, network, address string) (net.Conn, error);
+
+func lookupGoogle(dialer Dialer) (addrs []string, err error) {
 	r := net.Resolver{
 		PreferGo: true,
-		Dial:     CloudFlareDNSDialer,
+		Dial:     dialer,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := r.LookupHost(ctx, "www.google.com")
-	return err == nil
+	return r.LookupHost(ctx, "www.google.com")
+}
+
+func getLink() bool {
+	dialers := []Dialer{CloudFlareDNSDialer, GoogleDNSDialer, OpenDNSDialer};
+	for _, dialer := range dialers {
+		_, err := lookupGoogle(dialer);
+		if err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func getIP() string {
