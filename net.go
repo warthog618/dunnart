@@ -6,7 +6,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -19,8 +19,8 @@ func init() {
 	RegisterModule("net", newNets)
 }
 
-type Nets struct {
-	nn []*NetIf
+type nets struct {
+	nn []*netIf
 }
 
 func newNets(cfg *config.Config) SyncCloser {
@@ -39,16 +39,16 @@ func newNets(cfg *config.Config) SyncCloser {
 	mDefCfg := dict.New()
 	mDefCfg.Set("period", cfg.MustGet("period").String())
 	mDefCfg.Set("entities", cfg.MustGet("entities").StringSlice())
-	nn := []*NetIf{}
+	nn := []*netIf{}
 	for _, name := range cfg.MustGet("interfaces").StringSlice() {
 		mCfg := cfg.GetConfig(name)
 		mCfg.Append(mDefCfg)
 		nn = append(nn, newNetIf(name, mCfg))
 	}
-	return &Nets{nn: nn}
+	return &nets{nn: nn}
 }
 
-func (n *Nets) Config() []EntityConfig {
+func (n *nets) Config() []EntityConfig {
 	var config []EntityConfig
 	for _, netif := range n.nn {
 		config = append(config, netif.Config()...)
@@ -56,58 +56,58 @@ func (n *Nets) Config() []EntityConfig {
 	return config
 }
 
-func (n *Nets) Publish() {
+func (n *nets) Publish() {
 	for _, netif := range n.nn {
 		netif.publish()
 	}
 }
 
-func (n *Nets) Sync(ps PubSub) {
+func (n *nets) Sync(ps PubSub) {
 	for _, netif := range n.nn {
 		netif.Sync(ps)
 	}
 }
 
-func (n *Nets) Close() {
+func (n *nets) Close() {
 }
 
-type Gauge struct {
+type gauge struct {
 	valid bool
 	value uint64
 }
 
-func (g Gauge) delta(new Gauge) uint64 {
+func (g gauge) delta(new gauge) uint64 {
 	if g.valid && new.valid && (g.value < new.value) {
 		return new.value - g.value
 	}
 	return 0
 }
 
-func (g Gauge) rate(new Gauge, td time.Duration) float64 {
+func (g gauge) rate(new gauge, td time.Duration) float64 {
 	return float64(g.delta(new)) / td.Seconds()
 }
 
-type Link struct {
+type link struct {
 	operstate string
 	carrier   string
 }
 
-type NetIf struct {
+type netIf struct {
 	name          string
 	statsEntities map[string]bool
 	linkEntities  map[string]bool
-	link          Link
+	link          link
 	online        bool
 	linkPoller    *PolledSensor
 	statsPoller   *PolledSensor
 	ps            PubSub
-	gauges        map[string]Gauge
+	gauges        map[string]gauge
 	lastTime      time.Time
 	linkMsg       string
 	statsMsg      string
 }
 
-func (n *NetIf) publish() {
+func (n *netIf) publish() {
 	if n.linkPoller != nil {
 		n.publishLink()
 	}
@@ -116,25 +116,25 @@ func (n *NetIf) publish() {
 	}
 }
 
-func (n *NetIf) publishLink() {
+func (n *netIf) publishLink() {
 	n.ps.Publish("/"+n.name, n.linkMsg)
 }
 
-func (n *NetIf) publishStats() {
+func (n *netIf) publishStats() {
 	n.ps.Publish("/"+n.name+"/stats", n.statsMsg)
 }
 
-func (n *NetIf) RefreshLink(forced bool) {
+func (n *netIf) RefreshLink(forced bool) {
 	changed := forced
 	if n.linkEntities["operstate"] {
-		opst := n.read_status("operstate")
+		opst := n.readStatus("operstate")
 		if n.link.operstate != opst {
 			changed = true
 			n.link.operstate = opst
 		}
 	}
 	if n.linkEntities["carrier"] {
-		c := n.read_status("carrier")
+		c := n.readStatus("carrier")
 		if n.link.carrier != c {
 			changed = true
 			n.link.carrier = c
@@ -153,8 +153,8 @@ func (n *NetIf) RefreshLink(forced bool) {
 	}
 }
 
-func (n *NetIf) RefreshStats(forced bool) {
-	oldg := map[string]Gauge{}
+func (n *netIf) RefreshStats(_ bool) {
+	oldg := map[string]gauge{}
 	t := time.Now()
 	var elapsed time.Duration
 	if !n.lastTime.IsZero() {
@@ -163,7 +163,7 @@ func (n *NetIf) RefreshStats(forced bool) {
 	n.lastTime = t
 	for gname := range n.gauges {
 		oldg[gname] = n.gauges[gname]
-		n.gauges[gname] = n.read_gauge(gname)
+		n.gauges[gname] = n.readGauge(gname)
 	}
 	fields := []string{}
 	for _, gname := range statsGauges {
@@ -184,18 +184,18 @@ func (n *NetIf) RefreshStats(forced bool) {
 	n.publishStats()
 }
 
-func (n *NetIf) read_status(fname string) string {
-	v, err := ioutil.ReadFile("/sys/class/net/" + n.name + "/" + fname)
+func (n *netIf) readStatus(fname string) string {
+	v, err := os.ReadFile("/sys/class/net/" + n.name + "/" + fname)
 	if err == nil {
 		return strings.TrimSpace(string(v))
 	}
 	return "unknown"
 }
 
-func (n *NetIf) read_gauge(gname string) Gauge {
-	g := Gauge{}
+func (n *netIf) readGauge(gname string) gauge {
+	g := gauge{}
 	fname := "/sys/class/net/" + n.name + "/statistics/" + gname
-	v, err := ioutil.ReadFile(fname)
+	v, err := os.ReadFile(fname)
 	if err == nil {
 		v, err := strconv.ParseUint(strings.TrimSpace(string(v)), 10, 64)
 		if err == nil {
@@ -206,15 +206,15 @@ func (n *NetIf) read_gauge(gname string) Gauge {
 	return g
 }
 
-func (w *NetIf) Close() {
-	w.linkPoller.Close()
-	w.statsPoller.Close()
+func (n *netIf) Close() {
+	n.linkPoller.Close()
+	n.statsPoller.Close()
 }
 
-func (w *NetIf) Sync(ps PubSub) {
-	w.ps = ps
-	w.linkPoller.Sync(ps)
-	w.statsPoller.Sync(ps)
+func (n *netIf) Sync(ps PubSub) {
+	n.ps = ps
+	n.linkPoller.Sync(ps)
+	n.statsPoller.Sync(ps)
 }
 
 var statsGauges = []string{
@@ -224,7 +224,7 @@ var statsGauges = []string{
 	"tx_packets",
 }
 
-// pairing of rate to underlying gauge
+// Rate pairs the rate to the underlying gauge
 type Rate struct {
 	rate    string
 	gauge   string
@@ -254,7 +254,7 @@ var linkEntities = []string{
 	"carrier",
 }
 
-func ss_contains(ss []string, name string) bool {
+func ssContains(ss []string, name string) bool {
 	for _, s := range ss {
 		if s == name {
 			return true
@@ -263,7 +263,7 @@ func ss_contains(ss []string, name string) bool {
 	return false
 }
 
-func newNetIf(name string, cfg *config.Config) *NetIf {
+func newNetIf(name string, cfg *config.Config) *netIf {
 	defCfg := dict.New()
 	// link and stats may inherit period
 	defCfg.Set("link.period", cfg.MustGet("period").String())
@@ -272,31 +272,31 @@ func newNetIf(name string, cfg *config.Config) *NetIf {
 	se := map[string]bool{}
 	le := map[string]bool{}
 	for _, e := range cfg.MustGet("entities").StringSlice() {
-		if ss_contains(statsEntities, e) {
+		if ssContains(statsEntities, e) {
 			se[e] = true
-		} else if ss_contains(linkEntities, e) {
+		} else if ssContains(linkEntities, e) {
 			le[e] = true
 		}
 	}
-	n := NetIf{
+	n := netIf{
 		name:          name,
 		statsEntities: se,
 		linkEntities:  le,
 		online:        getLink(),
 		ps:            StubPubSub{},
-		gauges:        map[string]Gauge{},
+		gauges:        map[string]gauge{},
 	}
 	if se["rx_bytes"] || se["rx_throughput"] {
-		n.gauges["rx_bytes"] = n.read_gauge("rx_bytes")
+		n.gauges["rx_bytes"] = n.readGauge("rx_bytes")
 	}
 	if se["tx_bytes"] || se["tx_throughput"] {
-		n.gauges["tx_bytes"] = n.read_gauge("tx_bytes")
+		n.gauges["tx_bytes"] = n.readGauge("tx_bytes")
 	}
 	if se["rx_packets"] || se["rx_packet_rate"] {
-		n.gauges["rx_packets"] = n.read_gauge("rx_packets")
+		n.gauges["rx_packets"] = n.readGauge("rx_packets")
 	}
 	if se["tx_packets"] || se["tx_packet_rate"] {
-		n.gauges["tx_packets"] = n.read_gauge("tx_packets")
+		n.gauges["tx_packets"] = n.readGauge("tx_packets")
 	}
 	if len(le) > 0 {
 		n.linkPoller = &PolledSensor{
@@ -315,7 +315,7 @@ func newNetIf(name string, cfg *config.Config) *NetIf {
 	return &n
 }
 
-func (n *NetIf) Config() []EntityConfig {
+func (n *netIf) Config() []EntityConfig {
 	var config []EntityConfig
 	if n.linkPoller != nil {
 		if n.linkEntities["operstate"] {

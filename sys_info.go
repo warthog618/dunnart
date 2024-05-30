@@ -20,7 +20,7 @@ func init() {
 	RegisterModule("sys_info", newSystemInfo)
 }
 
-type SystemInfo struct {
+type systemInfo struct {
 	PolledSensor
 	entities []string
 	values   map[string]string
@@ -28,9 +28,9 @@ type SystemInfo struct {
 }
 
 var ents = map[string]struct {
-	ha_name   string
-	uname_opt string
-	osr_name  string
+	haName   string
+	unameOpt string
+	osrName  string
 }{
 	"machine":        {"Machine", "-m", ""},
 	"kernel_name":    {"Kernel name", "-s", ""},
@@ -65,16 +65,16 @@ func newSystemInfo(cfg *config.Config) SyncCloser {
 		}
 	}
 	sort.Strings(entities)
-	si := SystemInfo{entities: entities, values: make(map[string]string)}
+	si := systemInfo{entities: entities, values: make(map[string]string)}
 	si.poller = NewPoller(period, si.Refresh)
 	return &si
 }
 
-func (s *SystemInfo) Config() []EntityConfig {
+func (s *systemInfo) Config() []EntityConfig {
 	var config []EntityConfig
 	for _, e := range s.entities {
 		cfg := map[string]interface{}{
-			"name":           ents[e].ha_name,
+			"name":           ents[e].haName,
 			"state_topic":    "~/sys_info",
 			"value_template": fmt.Sprintf("{{value_json.%s}}", e),
 			"icon":           "mdi:information-outline",
@@ -85,7 +85,7 @@ func (s *SystemInfo) Config() []EntityConfig {
 	return config
 }
 
-func (s *SystemInfo) Publish() {
+func (s *systemInfo) Publish() {
 	s.ps.Publish(s.topic, s.msg)
 }
 
@@ -117,19 +117,19 @@ func unquote(s string) string {
 	return s
 }
 
-func (s *SystemInfo) Refresh(forced bool) {
+func (s *systemInfo) Refresh(_ bool) {
 	var osr map[string]string
 	for _, e := range s.entities {
-		osr_name := ents[e].osr_name
-		if len(osr_name) > 0 {
+		osrName := ents[e].osrName
+		if len(osrName) > 0 {
 			if osr == nil {
 				osr, _ = osRelease()
 			}
-			s.values[e] = osr[osr_name]
+			s.values[e] = osr[osrName]
 		}
-		uname_opt := ents[e].uname_opt
-		if len(uname_opt) > 0 {
-			cmd := exec.Command("uname", uname_opt)
+		unameOpt := ents[e].unameOpt
+		if len(unameOpt) > 0 {
+			cmd := exec.Command("uname", unameOpt)
 			if v, err := cmd.Output(); err == nil {
 				s.values[e] = strings.TrimSpace(string(v))
 			} else {

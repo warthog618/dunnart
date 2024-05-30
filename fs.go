@@ -22,24 +22,24 @@ func init() {
 	RegisterModule("fs", newMounts)
 }
 
-type Mounts struct {
-	mm []*Mount
+type mounts struct {
+	mm []*mount
 }
 
 func newMounts(cfg *config.Config) SyncCloser {
 	defCfg := dict.New()
 	defCfg.Set("period", cfg.MustGet("period", config.WithDefaultValue("10m")).String())
-	mm := []*Mount{}
+	mm := []*mount{}
 	mps := cfg.MustGet("mountpoints").StringSlice()
 	for _, name := range mps {
 		mCfg := cfg.GetConfig(name)
 		mCfg.Append(defCfg)
 		mm = append(mm, newMount(name, mCfg))
 	}
-	return &Mounts{mm: mm}
+	return &mounts{mm: mm}
 }
 
-func (m *Mounts) Config() []EntityConfig {
+func (m *mounts) Config() []EntityConfig {
 	var config []EntityConfig
 	for _, mount := range m.mm {
 		config = append(config, mount.Config()...)
@@ -47,22 +47,22 @@ func (m *Mounts) Config() []EntityConfig {
 	return config
 }
 
-func (m *Mounts) Publish() {
+func (m *mounts) Publish() {
 	for _, mount := range m.mm {
 		mount.Publish()
 	}
 }
 
-func (m *Mounts) Sync(ps PubSub) {
+func (m *mounts) Sync(ps PubSub) {
 	for _, mount := range m.mm {
 		mount.Sync(ps)
 	}
 }
 
-func (m *Mounts) Close() {
+func (m *mounts) Close() {
 }
 
-type Mount struct {
+type mount struct {
 	PolledSensor
 	name    string
 	path    string
@@ -71,20 +71,20 @@ type Mount struct {
 	msg     string
 }
 
-type MountConfig struct {
+type mountConfig struct {
 	Period time.Duration
 	Path   string
 }
 
-func newMount(name string, cfg *config.Config) *Mount {
-	m := Mount{name: name, path: cfg.MustGet("path").String()}
+func newMount(name string, cfg *config.Config) *mount {
+	m := mount{name: name, path: cfg.MustGet("path").String()}
 	m.topic = "/" + name
 	m.poller = NewPoller(cfg.MustGet("period").Duration(),
 		m.Refresh)
 	return &m
 }
 
-func (m *Mount) Config() []EntityConfig {
+func (m *mount) Config() []EntityConfig {
 	var config []EntityConfig
 	mtopic := "~/fs" + m.topic
 	cfg := map[string]interface{}{
@@ -115,7 +115,7 @@ func (m *Mount) Config() []EntityConfig {
 	return config
 }
 
-func (m *Mount) update() bool {
+func (m *mount) update() bool {
 	changed := false
 	cmd := exec.Command("df", m.path)
 	out, err := cmd.Output()
@@ -142,9 +142,9 @@ func (m *Mount) update() bool {
 				log.Printf("error parsing uint: %v", err)
 				return false
 			}
-			used_pc := uint32((used * 10000) / total)
-			if used_pc != m.used {
-				m.used = used_pc
+			usedPercent := uint32((used * 10000) / total)
+			if usedPercent != m.used {
+				m.used = usedPercent
 				changed = true
 			}
 		}
@@ -156,11 +156,11 @@ func (m *Mount) update() bool {
 	return changed
 }
 
-func (m *Mount) Publish() {
+func (m *mount) Publish() {
 	m.ps.Publish(m.topic, m.msg)
 }
 
-func (m *Mount) Refresh(forced bool) {
+func (m *mount) Refresh(forced bool) {
 	changed := forced
 	if m.update() {
 		changed = true

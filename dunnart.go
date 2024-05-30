@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: MIT
 
+// Dunnart is a lightweight system monitor over MQTT for HomeAssistant
 package main
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -73,21 +73,21 @@ func newMQTTOpts(cfg *config.Config) *mqtt.ClientOptions {
 	return opts
 }
 
-type Dunnart struct {
+type dunnart struct {
 	ps PubSub
 }
 
-func (d *Dunnart) Publish() {
+func (d *dunnart) Publish() {
 	d.ps.Publish("", "online")
 	d.ps.Publish("/version", version)
 }
 
-func (d *Dunnart) Sync(ps PubSub) {
+func (d *dunnart) Sync(ps PubSub) {
 	d.ps = ps
 	d.Publish()
 }
 
-func (m *Dunnart) Config() []EntityConfig {
+func (d *dunnart) Config() []EntityConfig {
 	var config []EntityConfig
 	cfg := map[string]interface{}{
 		"name":         "status",
@@ -129,10 +129,13 @@ func initialConnect(mc mqtt.Client, done <-chan struct{}) {
 	}
 }
 
+// ModuleFactory creates a module with the given config.
 type ModuleFactory func(cfg *config.Config) SyncCloser
 
 var moduleFactories = map[string]ModuleFactory{}
 
+// RegisterModule provides the mapping from module name, as found in the
+// config file, to the ModuleFactory used to construct the module.
 func RegisterModule(name string, mf ModuleFactory) {
 	moduleFactories[name] = mf
 }
@@ -156,7 +159,7 @@ func main() {
 	}()
 
 	ss := map[string]Syncer{
-		"": &Dunnart{},
+		"": &dunnart{},
 	}
 
 	mm := cfg.MustGet("modules").StringSlice()
@@ -215,7 +218,7 @@ func main() {
 					if len(modName) > 0 {
 						t += "/" + modName
 					}
-					ps := MQTT{mc, t}
+					ps := mqttPubSub{mc, t}
 					s.Sync(ps)
 				}
 				mc.Subscribe(habmTopic, mustQos,
@@ -239,31 +242,31 @@ func main() {
 	<-done
 }
 
-type Discovery struct {
+type discovery struct {
 	// map from topic to config for discoverable entities
 	ents map[string]string
 }
 
-func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) Discovery {
+func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) discovery {
 	ents := map[string]string{}
 	prefix := cfg.MustGet("prefix").String()
 	if len(prefix) > 0 {
-		mac, err := get_mac(cfg)
+		mac, err := getMAC(cfg)
 		if err != nil {
 			log.Fatalf("discovery: %v", err)
 		}
 		uid := cfg.MustGet("unique_id",
 			config.WithDefaultValue("dnrt-"+strings.Replace(mac, ":", "", -1))).String()
-		nodeId := cfg.MustGet("node_id").String()
+		nodeID := cfg.MustGet("node_id").String()
 		baseCfg := map[string]interface{}{
 			"~": baseTopic,
 			"device": map[string]interface{}{
-				"name":        nodeId,
+				"name":        nodeID,
 				"connections": [][]string{{"mac", mac}},
 			},
 		}
 		for modName, s := range ss {
-			if a, ok := s.(Discoverable); ok {
+			if a, ok := s.(discoverable); ok {
 				for _, entity := range a.Config() {
 					euid := uid
 					if len(modName) > 0 {
@@ -277,18 +280,18 @@ func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) Di
 							"config"},
 						"/")
 					baseCfg["unique_id"] = euid
-					baseCfg["object_id"] = strings.Join([]string{nodeId, modName, entity.name}, "_")
-					config := normalise_config(entity.config, baseCfg)
-					config = strings.ReplaceAll(config, "{{.NodeId}}", nodeId)
+					baseCfg["object_id"] = strings.Join([]string{nodeID, modName, entity.name}, "_")
+					config := normaliseConfig(entity.config, baseCfg)
+					config = strings.ReplaceAll(config, "{{.NodeId}}", nodeID)
 					ents[topic] = config
 				}
 			}
 		}
 	}
-	return Discovery{ents: ents}
+	return discovery{ents: ents}
 }
 
-func (d *Discovery) advertise(mc mqtt.Client) {
+func (d *discovery) advertise(mc mqtt.Client) {
 	log.Print("advertise for ha discovery")
 	for topic, config := range d.ents {
 		mc.Publish(topic, mustQos, false, config)
@@ -296,10 +299,10 @@ func (d *Discovery) advertise(mc mqtt.Client) {
 
 }
 
-func get_mac(cfg *config.Config) (string, error) {
+func getMAC(cfg *config.Config) (string, error) {
 	ss := cfg.MustGet("mac_source").StringSlice()
 	for _, source := range ss {
-		v, err := ioutil.ReadFile(fmt.Sprintf("/sys/class/net/%s/address", source))
+		v, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/address", source))
 		if err == nil {
 			return strings.TrimSpace(string(v)), nil
 		}
@@ -307,14 +310,14 @@ func get_mac(cfg *config.Config) (string, error) {
 	return "", errors.New("can't find mac")
 }
 
-func normalise_config(cfg, baseCfg map[string]interface{}) string {
+func normaliseConfig(cfg, baseCfg map[string]interface{}) string {
 	for k, v := range baseCfg {
 		if _, exists := cfg[k]; !exists {
 			cfg[k] = v
 		}
 	}
 
-	if !config_contains(cfg, "availability_topic") && !config_contains(cfg, "availability") {
+	if !configContains(cfg, "availability_topic") && !configContains(cfg, "availability") {
 		cfg["availability_topic"] = "~"
 	}
 	if cfg["state_topic"] == "~" {
@@ -329,11 +332,12 @@ func normalise_config(cfg, baseCfg map[string]interface{}) string {
 	return string(config)
 }
 
-func config_contains(cfg map[string]interface{}, key string) bool {
+func configContains(cfg map[string]interface{}, key string) bool {
 	_, ok := cfg[key]
 	return ok
 }
 
+// Syncer is a type that syncs its state with MQTT.
 type Syncer interface {
 	// Check the current state of contained entities and publish any state changes.
 	Sync(PubSub)
@@ -341,11 +345,13 @@ type Syncer interface {
 	Publish()
 }
 
+// SyncCloser is a Syncer that also provides a Close.
 type SyncCloser interface {
 	Syncer
 	Close()
 }
 
+// EntityConfig defines how to map a module field into a HA entity.
 type EntityConfig struct {
 	// The name of the entity within the module
 	name string
@@ -358,38 +364,30 @@ type EntityConfig struct {
 	config map[string]interface{}
 }
 
-type BaseConfig struct {
-	BaseTopic string
-	NodeId    string
-	Mac       string
-	UniqueId  string
-	ObjectId  string
-}
-
-type Discoverable interface {
+type discoverable interface {
 	Config() []EntityConfig
 }
 
-type Pub interface {
-	Publish(string, interface{})
-}
-
+// PubSub is an interface which can both publish messages to topics,
+// and subscribe to messages on topics.
 type PubSub interface {
 	Publish(string, interface{})
 	Subscribe(string, func([]byte))
 }
 
-type MQTT struct {
+type mqttPubSub struct {
 	mc        mqtt.Client
 	baseTopic string
 }
 
-func (m MQTT) Publish(topic string, value interface{}) {
+// Publish publishes a topic to the MQTT broker.
+func (m mqttPubSub) Publish(topic string, value interface{}) {
 	log.Printf("publish %s '%s'", m.baseTopic+topic, fmt.Sprint(value))
 	m.mc.Publish(m.baseTopic+topic, mustQos, false, fmt.Sprint(value))
 }
 
-func (m MQTT) Subscribe(topic string, callback func([]byte)) {
+// Subscribe subscribes to a topic on the MQTT broker.
+func (m mqttPubSub) Subscribe(topic string, callback func([]byte)) {
 	wrap := func(m mqtt.Client, msg mqtt.Message) {
 		callback(msg.Payload())
 	}
@@ -397,10 +395,13 @@ func (m MQTT) Subscribe(topic string, callback func([]byte)) {
 	m.mc.Subscribe(m.baseTopic+topic, mustQos, wrap)
 }
 
+// StubPubSub is an empty PubSub implementation.
 type StubPubSub struct{}
 
-func (s StubPubSub) Publish(topic string, value interface{}) {
+// Publish does nothing.
+func (s StubPubSub) Publish(_ string, _ interface{}) {
 }
 
-func (s StubPubSub) Subscribe(topic string, callback func([]byte)) {
+// Subscribe does nothing.
+func (s StubPubSub) Subscribe(_ string, _ func([]byte)) {
 }

@@ -24,7 +24,7 @@ func onlineString(online bool) string {
 	return "offline"
 }
 
-type WAN struct {
+type wan struct {
 	online     bool
 	ip         string
 	linkPoller *PolledSensor
@@ -32,7 +32,7 @@ type WAN struct {
 	ps         PubSub
 }
 
-func (w *WAN) Publish() {
+func (w *wan) Publish() {
 	if w.linkPoller != nil {
 		w.ps.Publish("", onlineString(w.online))
 	}
@@ -41,7 +41,7 @@ func (w *WAN) Publish() {
 	}
 }
 
-func (w *WAN) RefreshLink(forced bool) {
+func (w *wan) RefreshLink(forced bool) {
 	online := getLink()
 	if w.online != online || forced {
 		w.online = online
@@ -52,7 +52,7 @@ func (w *WAN) RefreshLink(forced bool) {
 	}
 }
 
-func (w *WAN) RefreshIP(forced bool) {
+func (w *wan) RefreshIP(forced bool) {
 	ip := getIP()
 	if w.ip != ip || forced {
 		w.ip = ip
@@ -60,12 +60,12 @@ func (w *WAN) RefreshIP(forced bool) {
 	}
 }
 
-func (w *WAN) Close() {
+func (w *wan) Close() {
 	w.linkPoller.Close()
 	w.ipPoller.Close()
 }
 
-func (w *WAN) Sync(ps PubSub) {
+func (w *wan) Sync(ps PubSub) {
 	w.ps = ps
 	w.linkPoller.Sync(ps)
 	w.ipPoller.Sync(ps)
@@ -81,28 +81,28 @@ func newWAN(cfg *config.Config) SyncCloser {
 	for _, e := range cfg.MustGet("entities").StringSlice() {
 		entities[e] = true
 	}
-	wan := WAN{
+	w := wan{
 		online: getLink(),
 		ps:     StubPubSub{},
 	}
 	if entities["link"] {
-		wan.linkPoller = &PolledSensor{
+		w.linkPoller = &PolledSensor{
 			topic:  "",
-			poller: NewPoller(cfg.MustGet("link.period").Duration(), wan.RefreshLink),
+			poller: NewPoller(cfg.MustGet("link.period").Duration(), w.RefreshLink),
 			ps:     StubPubSub{},
 		}
 	}
 	if entities["ip"] {
-		wan.ipPoller = &PolledSensor{
+		w.ipPoller = &PolledSensor{
 			topic:  "/ip",
-			poller: NewPoller(cfg.MustGet("ip.period").Duration(), wan.RefreshIP),
+			poller: NewPoller(cfg.MustGet("ip.period").Duration(), w.RefreshIP),
 			ps:     StubPubSub{},
 		}
 	}
-	return &wan
+	return &w
 }
 
-func (w *WAN) Config() []EntityConfig {
+func (w *wan) Config() []EntityConfig {
 	var config []EntityConfig
 	if w.linkPoller != nil {
 		cfg := map[string]interface{}{
@@ -126,12 +126,12 @@ func (w *WAN) Config() []EntityConfig {
 	return config
 }
 
-type Dialer func(ctx context.Context, network, address string) (net.Conn, error)
+type dialer func(ctx context.Context, network, address string) (net.Conn, error)
 
-func lookupGoogle(dialer Dialer) (addrs []string, err error) {
+func lookupGoogle(d dialer) (addrs []string, err error) {
 	r := net.Resolver{
 		PreferGo: true,
-		Dial:     dialer,
+		Dial:     d,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -139,7 +139,7 @@ func lookupGoogle(dialer Dialer) (addrs []string, err error) {
 }
 
 func getLink() bool {
-	dialers := []Dialer{CloudFlareDNSDialer, GoogleDNSDialer, OpenDNSDialer}
+	dialers := []dialer{CloudFlareDNSDialer, GoogleDNSDialer, OpenDNSDialer}
 	for _, dialer := range dialers {
 		_, err := lookupGoogle(dialer)
 		if err == nil {
@@ -164,20 +164,20 @@ func getIP() string {
 }
 
 // CloudFlareDNSDialer connects to a CloudFlare DNS server
-func CloudFlareDNSDialer(ctx context.Context, network, address string) (net.Conn, error) {
+func CloudFlareDNSDialer(ctx context.Context, _, _ string) (net.Conn, error) {
 	d := net.Dialer{}
 	return d.DialContext(ctx, "udp", "1.1.1.1:53")
 }
 
 // GoogleDNSDialer connects to a Google DNS server
-func GoogleDNSDialer(ctx context.Context, network, address string) (net.Conn, error) {
+func GoogleDNSDialer(ctx context.Context, _, _ string) (net.Conn, error) {
 	d := net.Dialer{}
 	return d.DialContext(ctx, "udp", "8.8.8.8:53")
 }
 
 // OpenDNSDialer connects to an OpenDNS DNS server
 // Note that this assumes the default DNS lookup is functional.
-func OpenDNSDialer(ctx context.Context, network, address string) (net.Conn, error) {
+func OpenDNSDialer(ctx context.Context, _, _ string) (net.Conn, error) {
 	addrs, err := net.LookupHost("resolver1.opendns.com")
 	if err != nil {
 		return nil, err

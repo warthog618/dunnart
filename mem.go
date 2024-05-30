@@ -20,13 +20,13 @@ func init() {
 	RegisterModule("mem", newMem)
 }
 
-type MemStats map[string]float32
+type memStats map[string]float32
 
-type Mem struct {
+type mem struct {
 	PolledSensor
 	entities map[string]bool
 	// mem and swap used percent as calced from /proc/meminfo
-	stats MemStats
+	stats memStats
 	msg   string
 }
 
@@ -43,19 +43,19 @@ func newMem(cfg *config.Config) SyncCloser {
 		entities[e] = true
 	}
 	period := cfg.MustGet("period").Duration()
-	stats, err := memStats(entities)
+	stats, err := newMemStats(entities)
 	if err != nil {
 		log.Fatalf("unable to read mem stats: %v", err)
 	}
-	mem := Mem{entities: entities, stats: stats}
-	mem.poller = NewPoller(period, mem.Refresh)
-	return &mem
+	m := mem{entities: entities, stats: stats}
+	m.poller = NewPoller(period, m.Refresh)
+	return &m
 }
 
-func memStats(fields map[string]bool) (MemStats, error) {
+func newMemStats(fields map[string]bool) (memStats, error) {
 	names := []string{"MemTotal:", "MemAvailable:", "SwapTotal:", "SwapFree:"}
 	stats := [4]uint64{}
-	ms := MemStats{}
+	ms := memStats{}
 	f, err := os.Open("/proc/meminfo")
 	if err != nil {
 		return ms, err
@@ -86,7 +86,7 @@ func memStats(fields map[string]bool) (MemStats, error) {
 	return ms, nil
 }
 
-func (m *Mem) Config() []EntityConfig {
+func (m *mem) Config() []EntityConfig {
 	var config []EntityConfig
 	if m.entities["ram_used_percent"] {
 		cfg := map[string]interface{}{
@@ -111,12 +111,12 @@ func (m *Mem) Config() []EntityConfig {
 	return config
 }
 
-func (m *Mem) Publish() {
+func (m *mem) Publish() {
 	m.ps.Publish(m.topic, m.msg)
 }
 
-func (m *Mem) Refresh(forced bool) {
-	stats, err := memStats(m.entities)
+func (m *mem) Refresh(forced bool) {
+	stats, err := newMemStats(m.entities)
 	if err != nil {
 		log.Printf("unable to read mem stats: %v", err)
 		return

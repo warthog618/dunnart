@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Poller calls a function periodically, or when force refreshed.
 type Poller struct {
 	period  time.Duration
 	refresh chan bool
@@ -15,10 +16,12 @@ type Poller struct {
 	t       *time.Ticker
 }
 
-type PollerConfig struct {
+type pollerConfig struct {
 	Period time.Duration
 }
 
+// NewPoller creates a Poller that will call the func periodically, or when force refreshed.
+// The bool passed to the func indicates if the update was forced.
 func NewPoller(period time.Duration, f func(bool)) *Poller {
 	p := Poller{
 		period:  period,
@@ -54,6 +57,8 @@ func NewPoller(period time.Duration, f func(bool)) *Poller {
 	return &p
 }
 
+// Refresh triggers an immediate call of the polled function,
+// with the forced parameter indicating if an update should be forced.
 func (p *Poller) Refresh(forced bool) {
 	select {
 	case p.refresh <- forced:
@@ -61,6 +66,9 @@ func (p *Poller) Refresh(forced bool) {
 	}
 }
 
+// UpdatePeriod sets the update period for the Poller.
+// Triggers an immediate unforced updated of the polled function
+// before beginning the new update period.
 func (p *Poller) UpdatePeriod(period time.Duration) {
 	p.period = period
 	select {
@@ -71,6 +79,7 @@ func (p *Poller) UpdatePeriod(period time.Duration) {
 	p.t.Reset(p.period)
 }
 
+// Close shuts down the Poller goroutines.
 func (p *Poller) Close() {
 	close(p.done)
 }
@@ -82,6 +91,7 @@ type PolledSensor struct {
 	ps     PubSub
 }
 
+// Close shuts down the polling of the sensor.
 func (s *PolledSensor) Close() {
 	if s == nil {
 		return
@@ -89,10 +99,12 @@ func (s *PolledSensor) Close() {
 	s.poller.Close()
 }
 
+// Done returns true if the PolledSensor has been closed.
 func (s *PolledSensor) Done() chan struct{} {
 	return s.poller.done
 }
 
+// SetPollPeriod updates the polling period of the sensor.
 func (s *PolledSensor) SetPollPeriod(b []byte) {
 	d, err := time.ParseDuration(string(b))
 	if err != nil {
@@ -102,6 +114,8 @@ func (s *PolledSensor) SetPollPeriod(b []byte) {
 	s.ps.Publish(s.topic+"/poll_period", d)
 }
 
+// Sync binds the PolledSensor to the PubSub.
+// Its state remains synchronised until the PolledSensor is closed.
 func (s *PolledSensor) Sync(ps PubSub) {
 	if s == nil {
 		return

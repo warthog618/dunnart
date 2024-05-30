@@ -21,17 +21,17 @@ func init() {
 	RegisterModule("cpu", newCPU)
 }
 
-type CPU struct {
+type cpu struct {
 	PolledSensor
 	entities map[string]bool
 	// as read from /proc/stat
-	stats        CpuStats
-	tpath        string
-	temp         int64
-	have_temp    bool
-	idle_percent float32
-	uptime       float64
-	msg          string
+	stats       CPUStats
+	tpath       string
+	temp        int64
+	haveTemp    bool
+	idlePercent float32
+	uptime      float64
+	msg         string
 }
 
 func newCPU(cfg *config.Config) SyncCloser {
@@ -52,7 +52,7 @@ func newCPU(cfg *config.Config) SyncCloser {
 	if err != nil {
 		log.Fatalf("unable to read cpu stats: %v", err)
 	}
-	cpu := CPU{entities: entities, stats: stats}
+	cpu := cpu{entities: entities, stats: stats}
 	if entities["temperature"] {
 		tpath := cfg.MustGet("temperature.path").String()
 		temp, err := cpuTemp(tpath)
@@ -65,7 +65,7 @@ func newCPU(cfg *config.Config) SyncCloser {
 	return &cpu
 }
 
-func (c *CPU) Config() []EntityConfig {
+func (c *cpu) Config() []EntityConfig {
 	var config []EntityConfig
 	if c.entities["used_percent"] {
 		cfg := map[string]interface{}{
@@ -100,11 +100,12 @@ func (c *CPU) Config() []EntityConfig {
 	return config
 }
 
-// entries are [user, nicer, system, idle, iowait, irq, softirq, steal, quest, guest_nice]
-type CpuStats [10]uint64
+// CPUStats is an array of stats read from /proc/stat.
+// Entries are [user, nicer, system, idle, iowait, irq, softirq, steal, quest, guest_nice]
+type CPUStats [10]uint64
 
-func cpuStats() (CpuStats, error) {
-	var stats CpuStats
+func cpuStats() (CPUStats, error) {
+	var stats CPUStats
 	f, err := os.Open("/proc/stat")
 	if err != nil {
 		return stats, err
@@ -116,15 +117,15 @@ func cpuStats() (CpuStats, error) {
 		return stats, scanner.Err()
 	}
 	fields := strings.Fields(scanner.Text())
-	num_fields := len(fields)
-	if fields[0] != "cpu" || num_fields < 8 {
+	numFields := len(fields)
+	if fields[0] != "cpu" || numFields < 8 {
 		return stats, errors.Errorf("bad cpu line: %v", scanner.Text())
 	}
-	num_stats := num_fields - 1
-	if num_stats > len(stats) {
-		num_stats = len(stats)
+	numStats := numFields - 1
+	if numStats > len(stats) {
+		numStats = len(stats)
 	}
-	for i := 0; i < num_stats; i++ {
+	for i := 0; i < numStats; i++ {
 		v, err := strconv.ParseUint(fields[i+1], 10, 64)
 		if err != nil {
 			return stats, err
@@ -148,7 +149,7 @@ func cpuTemp(tpath string) (int64, error) {
 	return strconv.ParseInt(scanner.Text(), 10, 64)
 }
 
-func (c *CPU) Publish() {
+func (c *cpu) Publish() {
 	c.ps.Publish(c.topic, c.msg)
 }
 
@@ -166,7 +167,7 @@ func uptime() (float64, error) {
 	return strconv.ParseFloat(strings.Fields(scanner.Text())[0], 32)
 }
 
-func (c *CPU) Refresh(forced bool) {
+func (c *cpu) Refresh(forced bool) {
 	changed := forced
 	if c.entities["uptime"] {
 		if uptime, err := uptime(); err == nil {
@@ -179,7 +180,7 @@ func (c *CPU) Refresh(forced bool) {
 		if temp != c.temp {
 			changed = true
 			c.temp = temp
-			c.have_temp = true
+			c.haveTemp = true
 		}
 	}
 	stats, err := cpuStats()
@@ -187,25 +188,25 @@ func (c *CPU) Refresh(forced bool) {
 		log.Printf("unable to read cpu stats: %v", err)
 		return
 	}
-	d := CpuStats{}
+	d := CPUStats{}
 	total := uint64(0)
 	for i := 0; i < len(d); i++ {
 		d[i] = delta(c.stats[i], stats[i])
 		total += d[i]
 	}
 	if total != 0 {
-		idle_percent := float32((d[3]*10000)/total) / 100
-		if c.idle_percent != idle_percent {
+		idlePercent := float32((d[3]*10000)/total) / 100
+		if c.idlePercent != idlePercent {
 			changed = true
-			c.idle_percent = idle_percent
+			c.idlePercent = idlePercent
 		}
 	}
 	if changed {
 		fields := []string{}
 		if c.entities["used_percent"] {
-			fields = append(fields, fmt.Sprintf(`"idle_percent": %.2f`, c.idle_percent))
+			fields = append(fields, fmt.Sprintf(`"idle_percent": %.2f`, c.idlePercent))
 		}
-		if c.have_temp {
+		if c.haveTemp {
 			fields = append(fields, fmt.Sprintf(`"temperature": %.2f`, float32(c.temp)/1000))
 		}
 		if c.entities["uptime"] {
