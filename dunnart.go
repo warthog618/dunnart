@@ -307,7 +307,7 @@ func getMAC(cfg *config.Config) (string, error) {
 			return strings.TrimSpace(string(v)), nil
 		}
 	}
-	return "", errors.New("can't find mac")
+	return "", errors.New("can't find mac - check your homeassistant.discovery.mac_source configuration")
 }
 
 func normaliseConfig(cfg, baseCfg map[string]interface{}) string {
