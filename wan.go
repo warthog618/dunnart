@@ -47,7 +47,7 @@ func (w *WAN) RefreshLink(forced bool) {
 		w.online = online
 		w.ps.Publish("", onlineString(w.online))
 		if w.ipPoller != nil {
-			w.ipPoller.poller.Refresh(false);
+			w.ipPoller.poller.Refresh(false)
 		}
 	}
 }
@@ -126,7 +126,7 @@ func (w *WAN) Config() []EntityConfig {
 	return config
 }
 
-type Dialer func(ctx context.Context, network, address string) (net.Conn, error);
+type Dialer func(ctx context.Context, network, address string) (net.Conn, error)
 
 func lookupGoogle(dialer Dialer) (addrs []string, err error) {
 	r := net.Resolver{
@@ -139,9 +139,9 @@ func lookupGoogle(dialer Dialer) (addrs []string, err error) {
 }
 
 func getLink() bool {
-	dialers := []Dialer{CloudFlareDNSDialer, GoogleDNSDialer, OpenDNSDialer};
+	dialers := []Dialer{CloudFlareDNSDialer, GoogleDNSDialer, OpenDNSDialer}
 	for _, dialer := range dialers {
-		_, err := lookupGoogle(dialer);
+		_, err := lookupGoogle(dialer)
 		if err == nil {
 			return true
 		}
