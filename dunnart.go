@@ -296,10 +296,13 @@ func (d *discovery) advertise(mc mqtt.Client) {
 	for topic, config := range d.ents {
 		mc.Publish(topic, mustQos, false, config)
 	}
-
 }
 
 func getMAC(cfg *config.Config) (string, error) {
+	mac, err := cfg.Get("mac")
+	if err == nil {
+		return mac.String(), nil
+	}
 	ss := cfg.MustGet("mac_source").StringSlice()
 	for _, source := range ss {
 		v, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/address", source))

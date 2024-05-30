@@ -63,6 +63,7 @@ net:
 #    prefix: homeassistant
 #    status_delay: 15s
 #    node_id: <hostname>
+##   mac: <unique device id>
 #    mac_source: [eth0, enp3s0, wlan0]
 
 mqtt:

@@ -102,12 +102,13 @@ The **dunnart** defaults correspond to the default HA configuration, in which ca
 |birth_message_topic|The topic HA birth message topic|**homeassistant/status**|
 |discovery.prefix|The prefix for the topics to publish sensor config messages|**homeassistant**|
 |discovery.node_id|The name of the device that the MQTT integration will add to HA and that the entities will be assigned to.|*hostname*|
-|discovery.mac_source|A list of interfaces to use to provide a unique MAC address to identify the device.  The first active listed interface is used.|[eth0, enp3s0, wlan0]|
+|discovery.mac_source|A list of interfaces to use to provide a unique MAC address to identify this host device.  The first active listed interface is used.  This setting is ignored if *mac* is set. |[eth0, enp3s0, wlan0]|
+|discovery.mac|A unique MAC address to identify this host device.  If set this overrides *mac_source*. |Not set|
 |discovery.status_delay|A period between publishing entity config and status to allow HA time to register new entities before receiving the entity status|15s|
 
 ### Modules
 
-As per the Home Assistant section, the module sections are only requried to override the default settings.
+As per the Home Assistant section, the module sections are only required to override the default settings.
 
 #### CPU
 
