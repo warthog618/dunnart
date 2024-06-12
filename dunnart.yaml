@@ -5,12 +5,35 @@
 # Commented out fields correspond to default values.
 ## Doubly commented out fields correspond to additional available values.
 
+# Common daemon config
+
+#homeassistant:
+#  birth_message_topic: homeassistant/status
+#  discovery:
+#    prefix: homeassistant
+#    status_delay: 15s
+#    node_id: <hostname>
+##   mac: <unique device id>
+#    mac_source: [eth0, enp3s0, wlan0]
+
+mqtt:
+  broker: "tcp://<mqtt server>:1883"
+  username: <username>
+  password: <password>
+#  base_topic: dunnart/<hostname>
+
+# Module config
+
 modules: [cpu, fs, mem, net]
 
-#wan:
-#  entities: [link, ip]
-#  link.period: 1m
-#  ip.period: 10m
+cmd:
+# period: 1h
+  binary_sensors: [apt_status]
+  apt_status:
+##    name: "apt status"
+      cmd: /opt/dunnart/apt_status.sh
+##    device_class: update
+##    period: 6h
 
 #cpu:
 #  entities:
@@ -57,17 +80,7 @@ net:
 #   - os_release
 ##  - os_version
 
-#homeassistant:
-#  birth_message_topic: homeassistant/status
-#  discovery:
-#    prefix: homeassistant
-#    status_delay: 15s
-#    node_id: <hostname>
-##   mac: <unique device id>
-#    mac_source: [eth0, enp3s0, wlan0]
-
-mqtt:
-  broker: "tcp://<mqtt server>:1883"
-  username: <username>
-  password: <password>
-#  base_topic: dunnart/<hostname>
+#wan:
+#  entities: [link, ip]
+#  link.period: 1m
+#  ip.period: 10m
