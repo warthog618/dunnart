@@ -184,10 +184,12 @@ Supported entities:
 |entities|The system info sensors to expose|[kernel_release, os_release]|
 |period|The polling period for the system info sensors|6h|
 
-The info is drawn from `uname` and `/etc/os-release`.
+The info is drawn from `apt`, `uname` and `/etc/os-release`.
 
 Supported entities:
 
+- apt_status (APT upgrades are available)
+- apt_upgradable (number of upgradable APT packages)
 - machine (uname -m)
 - kernel_name (uname -s)
 - kernel_release (uname -r)

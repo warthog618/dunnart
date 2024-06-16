@@ -23,24 +23,29 @@ func init() {
 type systemInfo struct {
 	PolledSensor
 	entities []string
-	values   map[string]string
 	msg      string
 }
 
-var ents = map[string]struct {
-	haName   string
-	unameOpt string
-	osrName  string
-}{
-	"machine":        {"Machine", "-m", ""},
-	"kernel_name":    {"Kernel name", "-s", ""},
-	"kernel_release": {"Kernel release", "-r", ""},
-	"kernel_version": {"Kernel version", "-v", ""},
-	"os_release":     {"OS release", "", "PRETTY_NAME"},
-	"os_name":        {"OS name", "", "NAME"},
-	"os_version":     {"OS version", "", "VERSION"},
+var ents = map[string]string{
+	"machine":        "Machine",
+	"kernel_name":    "Kernel name",
+	"kernel_release": "Kernel release",
+	"kernel_version": "Kernel version",
+	"os_release":     "OS release",
+	"os_name":        "OS name",
+	"os_version":     "OS version",
+	"apt_status":     "APT status",
+	"apt_upgradable": "APT upgradable",
 }
 
+// mapping from entity name to field name in os-release
+var osrEnts = map[string]string{
+	"os_release": "PRETTY_NAME",
+	"os_name":    "NAME",
+	"os_version": "VERSION",
+}
+
+// mapping from entity to uname option to generate it
 var unameEnts = map[string]string{
 	"machine":        "-m",
 	"kernel_name":    "-s",
@@ -65,7 +70,7 @@ func newSystemInfo(cfg *config.Config) SyncCloser {
 		}
 	}
 	sort.Strings(entities)
-	si := systemInfo{entities: entities, values: make(map[string]string)}
+	si := systemInfo{entities: entities}
 	si.poller = NewPoller(period, si.Refresh)
 	return &si
 }
@@ -74,12 +79,25 @@ func (s *systemInfo) Config() []EntityConfig {
 	var config []EntityConfig
 	for _, e := range s.entities {
 		cfg := map[string]interface{}{
-			"name":           ents[e].haName,
+			"name":           ents[e],
 			"state_topic":    "~/sys_info",
 			"value_template": fmt.Sprintf("{{value_json.%s}}", e),
-			"icon":           "mdi:information-outline",
 		}
-		config = append(config, EntityConfig{e, "sensor", cfg})
+		if e == "apt_upgradable" {
+			cfg["unit_of_measurement"] = "packages"
+			cfg["icon"] = "mdi:package-down"
+		} else if e == "apt_status" {
+			cfg["device_class"] = "update"
+			cfg["payload_on"] = "true"
+			cfg["payload_off"] = "false"
+		} else {
+			cfg["icon"] = "mdi:information-outline"
+		}
+		if e == "apt_status" {
+			config = append(config, EntityConfig{e, "binary_sensor", cfg})
+		} else {
+			config = append(config, EntityConfig{e, "sensor", cfg})
+		}
 	}
 
 	return config
@@ -107,6 +125,16 @@ func osRelease() (map[string]string, error) {
 	return info, nil
 }
 
+func aptPackagesUpgradable() (int, error) {
+	cmd := exec.Command("apt", "-qq", "list", "--upgradable")
+	cmd.Stderr = nil
+	v, err := cmd.Output()
+	if err == nil {
+		return strings.Count(string(v), "\n"), nil
+	}
+	return 0, err
+}
+
 func unquote(s string) string {
 	if len(s) > 0 && s[0] == '"' {
 		s = s[1:]
@@ -119,27 +147,46 @@ func unquote(s string) string {
 
 func (s *systemInfo) Refresh(_ bool) {
 	var osr map[string]string
+	apu := -1
+
+	fields := []string{}
 	for _, e := range s.entities {
-		osrName := ents[e].osrName
-		if len(osrName) > 0 {
+		if osrName, ok := osrEnts[e]; ok {
 			if osr == nil {
-				osr, _ = osRelease()
+				if r, err := osRelease(); err == nil {
+					osr = r
+				}
 			}
-			s.values[e] = osr[osrName]
+			if osr != nil {
+				fields = append(fields, fmt.Sprintf(`"%s": "%s"`, e, osr[osrName]))
+			}
+			continue
 		}
-		unameOpt := ents[e].unameOpt
-		if len(unameOpt) > 0 {
+		if unameOpt, ok := unameEnts[e]; ok {
 			cmd := exec.Command("uname", unameOpt)
 			if v, err := cmd.Output(); err == nil {
-				s.values[e] = strings.TrimSpace(string(v))
-			} else {
-				delete(s.values, e)
+				fields = append(fields, fmt.Sprintf(`"%s": "%s"`, e, strings.TrimSpace(string(v))))
+			}
+			continue
+		}
+		if apu == -1 {
+			if c, err := aptPackagesUpgradable(); err == nil {
+				apu = c
 			}
 		}
-	}
-	fields := []string{}
-	for _, k := range s.entities {
-		fields = append(fields, fmt.Sprintf(`"%s": "%s"`, k, s.values[k]))
+		if e == "apt_status" {
+			if apu == 0 {
+				fields = append(fields, fmt.Sprintf(`"%s": "false"`, e))
+			} else if apu > 0 {
+				fields = append(fields, fmt.Sprintf(`"%s": "true"`, e))
+			}
+			continue
+		}
+		if e == "apt_upgradable" {
+			if apu != -1 {
+				fields = append(fields, fmt.Sprintf(`"%s": "%d"`, e, apu))
+			}
+		}
 	}
 	msg := "{" + strings.Join(fields, ", ") + "}"
 	if msg != s.msg {
