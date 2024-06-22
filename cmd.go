@@ -93,7 +93,7 @@ func newBinarySensorCmd(name string, cfg *config.Config) *binarySensorCmd {
 	ecfg := map[string]interface{}{
 		"name":           c.haName,
 		"state_topic":    "~/cmd" + c.topic,
-		"value_template": "{{value_json.state | is_defined}}",
+		"value_template": "{{value_json.state}}",
 		"payload_on":     "on",
 		"payload_off":    "off",
 	}
@@ -142,9 +142,9 @@ func (c *binarySensorCmd) Refresh(forced bool) {
 	if c.err == nil {
 		vv = append(vv, `"state": "on"`)
 	} else {
+		vv = append(vv, `"state": "off"`)
 		ec, ok := c.err.(*exec.ExitError)
 		if ok {
-			vv = append(vv, `"state": "off"`)
 			code := ec.ExitCode()
 			if code != 1 {
 				vv = append(vv, fmt.Sprintf(`"exit_code": "%d"`, code))
