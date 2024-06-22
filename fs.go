@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/warthog618/config"
 	"github.com/warthog618/config/dict"
@@ -69,11 +68,7 @@ type mount struct {
 	mounted bool
 	used    uint32
 	msg     string
-}
-
-type mountConfig struct {
-	Period time.Duration
-	Path   string
+	cfg     []EntityConfig
 }
 
 func newMount(name string, cfg *config.Config) *mount {
@@ -81,13 +76,8 @@ func newMount(name string, cfg *config.Config) *mount {
 	m.topic = "/" + name
 	m.poller = NewPoller(cfg.MustGet("period").Duration(),
 		m.Refresh)
-	return &m
-}
-
-func (m *mount) Config() []EntityConfig {
-	var config []EntityConfig
 	mtopic := "~/fs" + m.topic
-	cfg := map[string]interface{}{
+	ecfg := map[string]interface{}{
 		"name":           "fs " + m.name,
 		"state_topic":    mtopic,
 		"value_template": "{{value_json.mounted | is_defined}}",
@@ -96,8 +86,8 @@ func (m *mount) Config() []EntityConfig {
 		"payload_on":     "on",
 		"payload_off":    "off",
 	}
-	config = append(config, EntityConfig{m.name, "binary_sensor", cfg})
-	cfg = map[string]interface{}{
+	m.cfg = append(m.cfg, EntityConfig{m.name, "binary_sensor", ecfg})
+	ecfg = map[string]interface{}{
 		"name":                "fs " + m.name + " used percent",
 		"state_topic":         mtopic,
 		"value_template":      "{{(value_json.used_percent) | round(2)}}",
@@ -111,8 +101,12 @@ func (m *mount) Config() []EntityConfig {
 				"payload_not_available": "off",
 			},
 		}}
-	config = append(config, EntityConfig{m.name + "_used_percent", "sensor", cfg})
-	return config
+	m.cfg = append(m.cfg, EntityConfig{m.name + "_used_percent", "sensor", ecfg})
+	return &m
+}
+
+func (m *mount) Config() []EntityConfig {
+	return m.cfg
 }
 
 func (m *mount) update() bool {
@@ -161,19 +155,17 @@ func (m *mount) Publish() {
 }
 
 func (m *mount) Refresh(forced bool) {
-	changed := forced
-	if m.update() {
-		changed = true
+	if !m.update() && !forced {
+		return
 	}
-	if changed {
-		vv := []string{}
-		if m.mounted {
-			vv = append(vv, `"mounted": "on"`)
-			vv = append(vv, fmt.Sprintf(`"used_percent": %.2f`, float32(m.used)/100))
-		} else {
-			vv = append(vv, `"mounted": "off"`)
-		}
-		m.msg = fmt.Sprintf("{%s}", strings.Join(vv, ", "))
-		m.Publish()
+	vv := []string{}
+	if m.mounted {
+		vv = append(vv, `"mounted": "on"`)
+		vv = append(vv, fmt.Sprintf(`"used_percent": %.2f`, float32(m.used)/100))
+	} else {
+		vv = append(vv, `"mounted": "off"`)
 	}
+	m.msg = fmt.Sprintf("{%s}", strings.Join(vv, ", "))
+	m.Publish()
+
 }
