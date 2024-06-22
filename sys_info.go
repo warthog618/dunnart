@@ -26,6 +26,7 @@ type systemInfo struct {
 	msg      string
 }
 
+// mapping from entity name to HA display name
 var ents = map[string]string{
 	"machine":        "Machine",
 	"kernel_name":    "Kernel name",
