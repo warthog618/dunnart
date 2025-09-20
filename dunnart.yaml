@@ -73,7 +73,7 @@ net:
 #  period: 6h
 #  entities:
 ##  - apt_status
-##  - apt_upgraddable
+##  - apt_upgradable
 ##  - kernel_name
 #   - kernel_release
 ##  - kernel_version

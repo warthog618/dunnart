@@ -37,6 +37,7 @@ var ents = map[string]string{
 	"os_version":     "OS version",
 	"apt_status":     "APT status",
 	"apt_upgradable": "APT upgradable",
+	"pacman_status":  "Pacman status",
 }
 
 // mapping from entity name to field name in os-release
@@ -87,14 +88,14 @@ func (s *systemInfo) Config() []EntityConfig {
 		if e == "apt_upgradable" {
 			cfg["unit_of_measurement"] = "packages"
 			cfg["icon"] = "mdi:package-down"
-		} else if e == "apt_status" {
+		} else if e == "apt_status" || e == "pacman_status" {
 			cfg["device_class"] = "update"
 			cfg["payload_on"] = "true"
 			cfg["payload_off"] = "false"
 		} else {
 			cfg["icon"] = "mdi:information-outline"
 		}
-		if e == "apt_status" {
+		if e == "apt_status" || e == "pacman_status" {
 			config = append(config, EntityConfig{e, "binary_sensor", cfg})
 		} else {
 			config = append(config, EntityConfig{e, "sensor", cfg})
@@ -136,6 +137,17 @@ func aptPackagesUpgradable() (int, error) {
 	return 0, err
 }
 
+func pacmanCheckUpdates() int {
+	cmd := exec.Command("checkupdates")
+	err := cmd.Run()
+	if err != nil {
+		if exit, ok := err.(*exec.ExitError); ok {
+			return exit.ExitCode()
+		}
+	}
+	return 1
+}
+
 func unquote(s string) string {
 	if len(s) > 0 && s[0] == '"' {
 		s = s[1:]
@@ -170,6 +182,16 @@ func (s *systemInfo) Refresh(_ bool) {
 			}
 			continue
 		}
+		if e == "pacman_status" {
+			checkupdates := pacmanCheckUpdates()
+			if checkupdates == 2 {
+				fields = append(fields, fmt.Sprintf(`"%s": "false"`, e))
+			} else {
+				fields = append(fields, fmt.Sprintf(`"%s": "true"`, e))
+			}
+			continue
+		}
+		// must be an apt status
 		if apu == -1 {
 			if c, err := aptPackagesUpgradable(); err == nil {
 				apu = c

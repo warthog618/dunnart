@@ -39,7 +39,7 @@ func loadConfig() *config.Config {
 	defCfg.Set("homeassistant.birth_message_topic", "homeassistant/status")
 	defCfg.Set("homeassistant.discovery.status_delay", "15s")
 	defCfg.Set("homeassistant.discovery.prefix", "homeassistant")
-	defCfg.Set("homeassistant.discovery.mac_source", []string{"eth0", "enp3s0", "wlan0"})
+	defCfg.Set("homeassistant.discovery.mac_source", []string{"eth0", "enu1u1", "enp3s0", "wlan0"})
 	// no meaningful defaults....
 	//"mqtt.broker":         "",
 	//"mqtt.username":       "",
