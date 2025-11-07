@@ -7,17 +7,22 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
 
-	"github.com/warthog618/config"
-	"github.com/warthog618/config/dict"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
 	RegisterModule("sys_info", newSystemInfo)
+}
+
+type systemInfoConfig struct {
+	pollerConfig `yaml:",inline"`
+	Entities     []string
 }
 
 type systemInfo struct {
@@ -55,44 +60,39 @@ var unameEnts = map[string]string{
 	"kernel_version": "-v",
 }
 
-func newSystemInfo(cfg *config.Config) SyncCloser {
-	defCfg := dict.New()
-	defCfg.Set("period", "6h")
-	defCfg.Set("entities", []string{
-		"kernel_release",
-		"os_release",
-	})
-	cfg.Append(defCfg)
-	period := cfg.MustGet("period").Duration()
-	ee := cfg.MustGet("entities").StringSlice()
-	var entities []string
-	for _, e := range ee {
-		if _, ok := ents[e]; ok {
-			entities = append(entities, e)
-		}
+func newSystemInfo(yamlCfg *yaml.Node) SyncCloser {
+	cfg := systemInfoConfig{
+		pollerConfig: pollerConfig{Period: "6h"},
+		Entities:     []string{"kernel_release", "os_release"},
 	}
+	err := yamlCfg.Decode(&cfg)
+	if err != nil {
+		log.Fatalf("error reading sysInfo config: %v", err)
+	}
+	entities := cfg.Entities
 	sort.Strings(entities)
 	si := systemInfo{entities: entities}
-	si.poller = NewPoller(period, si.Refresh)
+	si.poller = NewPoller(&cfg.pollerConfig, si.Refresh)
 	return &si
 }
 
 func (s *systemInfo) Config() []EntityConfig {
 	var config []EntityConfig
 	for _, e := range s.entities {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":           ents[e],
 			"state_topic":    "~/sys_info",
 			"value_template": fmt.Sprintf("{{value_json.%s}}", e),
 		}
-		if e == "apt_upgradable" {
+		switch e {
+		case "apt_upgradable":
 			cfg["unit_of_measurement"] = "packages"
 			cfg["icon"] = "mdi:package-down"
-		} else if e == "apt_status" || e == "pacman_status" {
+		case "apt_status", "pacman_status":
 			cfg["device_class"] = "update"
 			cfg["payload_on"] = "true"
 			cfg["payload_off"] = "false"
-		} else {
+		default:
 			cfg["icon"] = "mdi:information-outline"
 		}
 		if e == "apt_status" || e == "pacman_status" {

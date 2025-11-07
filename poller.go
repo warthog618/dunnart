@@ -5,6 +5,7 @@
 package main
 
 import (
+	"log"
 	"time"
 )
 
@@ -17,12 +18,16 @@ type Poller struct {
 }
 
 type pollerConfig struct {
-	Period time.Duration
+	Period string
 }
 
 // NewPoller creates a Poller that will call the func periodically, or when force refreshed.
 // The bool passed to the func indicates if the update was forced.
-func NewPoller(period time.Duration, f func(bool)) *Poller {
+func NewPoller(cfg *pollerConfig, f func(bool)) *Poller {
+	period, err := time.ParseDuration(cfg.Period)
+	if err != nil {
+		log.Fatalf("error parsing period '%s': %v", cfg.Period, err)
+	}
 	p := Poller{
 		period:  period,
 		refresh: make(chan bool),

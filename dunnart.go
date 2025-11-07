@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -17,12 +18,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/warthog618/config"
-	"github.com/warthog618/config/blob"
-	cfgyaml "github.com/warthog618/config/blob/decoder/yaml"
-	"github.com/warthog618/config/dict"
-	"github.com/warthog618/config/env"
-	"github.com/warthog618/config/pflag"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -33,42 +29,86 @@ var (
 	version = "undefined"
 )
 
-func loadConfig() *config.Config {
-	defCfg := dict.New()
-	defCfg.Set("config-file", "dunnart.yaml")
-	defCfg.Set("homeassistant.birth_message_topic", "homeassistant/status")
-	defCfg.Set("homeassistant.discovery.status_delay", "15s")
-	defCfg.Set("homeassistant.discovery.prefix", "homeassistant")
-	defCfg.Set("homeassistant.discovery.mac_source", []string{"eth0", "enu1u1", "enp3s0", "wlan0"})
-	// no meaningful defaults....
-	//"mqtt.broker":         "",
-	//"mqtt.username":       "",
-	//"mqtt.password":       "",
+type discoveryConfig struct {
+	Prefix      string
+	NodeID      string   `yaml:"node_id"`
+	MacSource   []string `yaml:"mac_source"`
+	Mac         string
+	StatusDelay string `yaml:"status_delay"`
+	UniqueID    string `yaml:"unique_id"`
+}
+
+type homeAssistantConfig struct {
+	BirthMessageTopic string `yaml:"birth_message_topic"`
+	Discovery         discoveryConfig
+}
+
+type mqttConfig struct {
+	Broker    string
+	Username  string
+	Password  string
+	BaseTopic string `yaml:"base_topic"`
+}
+
+type config struct {
+	HomeAssistant homeAssistantConfig
+	Mqtt          mqttConfig
+	Modules       []string
+	mm            map[string]yaml.Node
+}
+
+func loadConfig() config {
+	cfg := config{
+		HomeAssistant: homeAssistantConfig{
+			BirthMessageTopic: "homeassistant/status",
+			Discovery: discoveryConfig{
+				StatusDelay: "15s",
+				Prefix:      "homeassistant",
+				MacSource:   []string{"eth0", "enu1u1", "enp3s0", "wlan0"},
+			},
+		},
+	}
 
 	host, err := os.Hostname()
 	if err == nil {
-		defCfg.Set("mqtt.base_topic", "dunnart/"+host)
-		defCfg.Set("homeassistant.discovery.node_id", host)
+		cfg.Mqtt.BaseTopic = "dunnart/" + host
+		cfg.HomeAssistant.Discovery.NodeID = host
 	}
-	s := config.NewStack(pflag.New(pflag.WithFlags(
-		[]pflag.Flag{{Short: 'c', Name: "config-file"}})),
-		env.New(env.WithEnvPrefix("DUNNART_")),
-	)
-	cfg := config.New(s, config.WithDefault(defCfg))
-	s.Append(blob.NewConfigFile(
-		cfg, "config.file", "dunnart.yaml", cfgyaml.NewDecoder()))
-	s.Append(defCfg)
-	return config.New(s)
+	configFile, ok := os.LookupEnv("DUNNART_CONFIG_FILE")
+	if !ok {
+		flag.StringVar(&configFile, "c", "dunnart.yaml", "configuration file")
+		flag.Parse()
+	}
+	ycfg, err := os.ReadFile(configFile)
+	if err != nil {
+		log.Fatalf("error reading config file: %v", err)
+	}
+	// structured read for main config
+	err = yaml.Unmarshal(ycfg, &cfg)
+	if err != nil {
+		log.Fatalf("error parsing config file: %v", err)
+	}
+	// unstructured read for module config
+	var mm map[string]yaml.Node
+	err = yaml.Unmarshal(ycfg, &mm)
+	if err != nil {
+		log.Fatalf("error parsing config: %v", err)
+	}
+	cfg.mm = make(map[string]yaml.Node)
+	for _, m := range cfg.Modules {
+		cfg.mm[m] = mm[m]
+	}
+	return cfg
 }
 
-func newMQTTOpts(cfg *config.Config) *mqtt.ClientOptions {
+func newMQTTOpts(cfg *mqttConfig) *mqtt.ClientOptions {
 	// OrderMatters defaults to true - required for QoS1 ordering
-	opts := mqtt.NewClientOptions().AddBroker(cfg.MustGet("broker").String())
-	if username, err := cfg.Get("username"); err == nil {
-		opts = opts.SetUsername(username.String())
+	opts := mqtt.NewClientOptions().AddBroker(cfg.Broker)
+	if len(cfg.Username) > 0 {
+		opts = opts.SetUsername(cfg.Username)
 	}
-	if password, err := cfg.Get("password"); err == nil {
-		opts = opts.SetPassword(password.String())
+	if len(cfg.Password) > 0 {
+		opts = opts.SetPassword(cfg.Password)
 	}
 	return opts
 }
@@ -89,9 +129,9 @@ func (d *dunnart) Sync(ps PubSub) {
 
 func (d *dunnart) Config() []EntityConfig {
 	var config []EntityConfig
-	cfg := map[string]interface{}{
+	cfg := map[string]any{
 		"name":         "status",
-		"object_id":    "{{.NodeId}}_status",
+		"object_id":    "{{.NodeID}}_status",
 		"state_topic":  "~",
 		"device_class": "connectivity",
 		"payload_on":   "online",
@@ -130,7 +170,7 @@ func initialConnect(mc mqtt.Client, done <-chan struct{}) {
 }
 
 // ModuleFactory creates a module with the given config.
-type ModuleFactory func(cfg *config.Config) SyncCloser
+type ModuleFactory func(cfg *yaml.Node) SyncCloser
 
 var moduleFactories = map[string]ModuleFactory{}
 
@@ -162,34 +202,19 @@ func main() {
 		"": &dunnart{},
 	}
 
-	mm := cfg.MustGet("modules").StringSlice()
-	var defCfg *dict.Getter
-	v, err := cfg.Get("period")
-	period := v.String()
-	if err == nil && len(period) > 0 {
-		defCfg = dict.New()
-		defCfg.Set("period", period)
-	}
-
-	for _, modName := range mm {
+	for modName, modCfg := range cfg.mm {
 		factory := moduleFactories[modName]
 		if factory == nil {
 			log.Fatalf("unsupported sensor: %s", modName)
 		}
-		modCfg := cfg.GetConfig(modName)
-		if defCfg != nil {
-			modCfg.Append(defCfg)
-		}
-		mod := factory(modCfg)
+		mod := factory(&modCfg)
 		ss[modName] = mod
 		defer mod.Close()
 	}
 
 	connect := make(chan int)
-	mqttCfg := cfg.GetConfig("mqtt")
-	baseTopic := mqttCfg.MustGet("base_topic").String()
-	mOpts := newMQTTOpts(mqttCfg).
-		SetWill(baseTopic, "offline", mustQos, false).
+	mOpts := newMQTTOpts(&cfg.Mqtt).
+		SetWill(cfg.Mqtt.BaseTopic, "offline", mustQos, false).
 		SetOnConnectHandler(func(mc mqtt.Client) {
 			select {
 			case connect <- 0:
@@ -201,10 +226,12 @@ func main() {
 	initialConnect(mc, done)
 	defer mc.Disconnect(0)
 
-	disco := newDiscovery(cfg.GetConfig("homeassistant.discovery"), ss, baseTopic)
-	habmTopic := cfg.MustGet("homeassistant.birth_message_topic").String()
+	disco := newDiscovery(&cfg.HomeAssistant.Discovery, ss, cfg.Mqtt.BaseTopic)
 	// delay for when ha sees the ads for the first time and is slow subscribing
-	sdelay := cfg.MustGet("homeassistant.discovery.status_delay").Duration()
+	sdelay, err := time.ParseDuration(cfg.HomeAssistant.Discovery.StatusDelay)
+	if err != nil {
+		log.Fatalf("error parsing status_delay '%s': %v", cfg.HomeAssistant.Discovery.StatusDelay, err)
+	}
 	go func() {
 		for {
 			select {
@@ -214,14 +241,14 @@ func main() {
 				log.Print("mqtt connect")
 				disco.advertise(mc)
 				for modName, s := range ss {
-					t := baseTopic
+					t := cfg.Mqtt.BaseTopic
 					if len(modName) > 0 {
 						t += "/" + modName
 					}
 					ps := mqttPubSub{mc, t}
 					s.Sync(ps)
 				}
-				mc.Subscribe(habmTopic, mustQos,
+				mc.Subscribe(cfg.HomeAssistant.BirthMessageTopic, mustQos,
 					func(mc mqtt.Client, msg mqtt.Message) {
 						if string(msg.Payload()) == "online" {
 							disco.advertise(mc)
@@ -247,21 +274,21 @@ type discovery struct {
 	ents map[string]string
 }
 
-func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) discovery {
+func newDiscovery(cfg *discoveryConfig, ss map[string]Syncer, baseTopic string) discovery {
 	ents := map[string]string{}
-	prefix := cfg.MustGet("prefix").String()
-	if len(prefix) > 0 {
+	if len(cfg.Prefix) > 0 {
 		mac, err := getMAC(cfg)
 		if err != nil {
 			log.Fatalf("discovery: %v", err)
 		}
-		uid := cfg.MustGet("unique_id",
-			config.WithDefaultValue("dnrt-"+strings.Replace(mac, ":", "", -1))).String()
-		nodeID := cfg.MustGet("node_id").String()
-		baseCfg := map[string]interface{}{
+		uid := cfg.UniqueID
+		if len(uid) == 0 {
+			uid = "dnrt-" + strings.ReplaceAll(mac, ":", "")
+		}
+		baseCfg := map[string]any{
 			"~": baseTopic,
-			"device": map[string]interface{}{
-				"name":        nodeID,
+			"device": map[string]any{
+				"name":        cfg.NodeID,
 				"connections": [][]string{{"mac", mac}},
 			},
 		}
@@ -274,15 +301,15 @@ func newDiscovery(cfg *config.Config, ss map[string]Syncer, baseTopic string) di
 					}
 					euid += "-" + entity.name
 					topic := strings.Join(
-						[]string{prefix,
+						[]string{cfg.Prefix,
 							entity.class,
 							euid,
 							"config"},
 						"/")
 					baseCfg["unique_id"] = euid
-					baseCfg["object_id"] = strings.Join([]string{nodeID, modName, entity.name}, "_")
+					baseCfg["object_id"] = strings.Join([]string{cfg.NodeID, modName, entity.name}, "_")
 					config := normaliseConfig(entity.config, baseCfg)
-					config = strings.ReplaceAll(config, "{{.NodeId}}", nodeID)
+					config = strings.ReplaceAll(config, "{{.NodeID}}", cfg.NodeID)
 					ents[topic] = config
 				}
 			}
@@ -298,13 +325,11 @@ func (d *discovery) advertise(mc mqtt.Client) {
 	}
 }
 
-func getMAC(cfg *config.Config) (string, error) {
-	mac, err := cfg.Get("mac")
-	if err == nil {
-		return mac.String(), nil
+func getMAC(cfg *discoveryConfig) (string, error) {
+	if len(cfg.Mac) > 0 {
+		return cfg.Mac, nil
 	}
-	ss := cfg.MustGet("mac_source").StringSlice()
-	for _, source := range ss {
+	for _, source := range cfg.MacSource {
 		v, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/address", source))
 		if err == nil {
 			return strings.TrimSpace(string(v)), nil
@@ -313,7 +338,7 @@ func getMAC(cfg *config.Config) (string, error) {
 	return "", errors.New("can't find a MAC address - check your homeassistant.discovery.mac_source configuration")
 }
 
-func normaliseConfig(cfg, baseCfg map[string]interface{}) string {
+func normaliseConfig(cfg, baseCfg map[string]any) string {
 	for k, v := range baseCfg {
 		if _, exists := cfg[k]; !exists {
 			cfg[k] = v
@@ -335,7 +360,7 @@ func normaliseConfig(cfg, baseCfg map[string]interface{}) string {
 	return string(config)
 }
 
-func configContains(cfg map[string]interface{}, key string) bool {
+func configContains(cfg map[string]any, key string) bool {
 	_, ok := cfg[key]
 	return ok
 }
@@ -364,7 +389,7 @@ type EntityConfig struct {
 	// This is the base message that is normalised, adding in default fields
 	// and performing template substitution, and converted to JSON and sent
 	// to the broker.
-	config map[string]interface{}
+	config map[string]any
 }
 
 type discoverable interface {
@@ -374,7 +399,7 @@ type discoverable interface {
 // PubSub is an interface which can both publish messages to topics,
 // and subscribe to messages on topics.
 type PubSub interface {
-	Publish(string, interface{})
+	Publish(string, any)
 	Subscribe(string, func([]byte))
 }
 
@@ -384,7 +409,7 @@ type mqttPubSub struct {
 }
 
 // Publish publishes a topic to the MQTT broker.
-func (m mqttPubSub) Publish(topic string, value interface{}) {
+func (m mqttPubSub) Publish(topic string, value any) {
 	log.Printf("publish %s '%s'", m.baseTopic+topic, fmt.Sprint(value))
 	m.mc.Publish(m.baseTopic+topic, mustQos, false, fmt.Sprint(value))
 }
@@ -402,7 +427,7 @@ func (m mqttPubSub) Subscribe(topic string, callback func([]byte)) {
 type StubPubSub struct{}
 
 // Publish does nothing.
-func (s StubPubSub) Publish(_ string, _ interface{}) {
+func (s StubPubSub) Publish(_ string, _ any) {
 }
 
 // Subscribe does nothing.

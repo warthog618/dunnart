@@ -6,11 +6,11 @@ package main
 
 import (
 	"context"
+	"log"
 	"net"
 	"time"
 
-	"github.com/warthog618/config"
-	"github.com/warthog618/config/dict"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -30,6 +30,12 @@ type wan struct {
 	linkPoller *PolledSensor
 	ipPoller   *PolledSensor
 	ps         PubSub
+}
+
+type wanConfig struct {
+	Entities []string
+	Link     pollerConfig
+	IP       pollerConfig
 }
 
 func (w *wan) Publish() {
@@ -71,14 +77,19 @@ func (w *wan) Sync(ps PubSub) {
 	w.ipPoller.Sync(ps)
 }
 
-func newWAN(cfg *config.Config) SyncCloser {
-	defCfg := dict.New()
-	defCfg.Set("link.period", "1m")
-	defCfg.Set("ip.period", "15m")
-	defCfg.Set("entities", []string{"link", "ip"})
-	cfg.Append(defCfg)
+func newWAN(yamlCfg *yaml.Node) SyncCloser {
+	cfg := wanConfig{
+		Entities: []string{"link", "ip"},
+		Link:     pollerConfig{Period: "1m"},
+		IP:       pollerConfig{Period: "15m"},
+	}
+	err := yamlCfg.Decode(&cfg)
+	if err != nil {
+		log.Fatalf("error reading wan config: %v", err)
+	}
+
 	entities := map[string]bool{}
-	for _, e := range cfg.MustGet("entities").StringSlice() {
+	for _, e := range cfg.Entities {
 		entities[e] = true
 	}
 	w := wan{
@@ -88,14 +99,14 @@ func newWAN(cfg *config.Config) SyncCloser {
 	if entities["link"] {
 		w.linkPoller = &PolledSensor{
 			topic:  "",
-			poller: NewPoller(cfg.MustGet("link.period").Duration(), w.RefreshLink),
+			poller: NewPoller(&cfg.Link, w.RefreshLink),
 			ps:     StubPubSub{},
 		}
 	}
 	if entities["ip"] {
 		w.ipPoller = &PolledSensor{
 			topic:  "/ip",
-			poller: NewPoller(cfg.MustGet("ip.period").Duration(), w.RefreshIP),
+			poller: NewPoller(&cfg.IP, w.RefreshIP),
 			ps:     StubPubSub{},
 		}
 	}
@@ -105,7 +116,7 @@ func newWAN(cfg *config.Config) SyncCloser {
 func (w *wan) Config() []EntityConfig {
 	var config []EntityConfig
 	if w.linkPoller != nil {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":         "WAN",
 			"state_topic":  "~/wan",
 			"device_class": "connectivity",
@@ -116,7 +127,7 @@ func (w *wan) Config() []EntityConfig {
 		config = append(config, EntityConfig{"link", "binary_sensor", cfg})
 	}
 	if w.ipPoller != nil {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":        "WAN IP",
 			"state_topic": "~/wan/ip",
 			"icon":        "mdi:ip",

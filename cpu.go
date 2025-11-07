@@ -13,8 +13,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/warthog618/config"
-	"github.com/warthog618/config/dict"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -34,18 +33,28 @@ type cpu struct {
 	msg         string
 }
 
-func newCPU(cfg *config.Config) SyncCloser {
-	defCfg := dict.New()
-	defCfg.Set("period", "1m")
-	defCfg.Set("entities", []string{
-		"temperature",
-		"used_percent",
-	})
-	defCfg.Set("temperature.path", "/sys/class/thermal/thermal_zone0/temp")
-	cfg.Append(defCfg)
-	period := cfg.MustGet("period").Duration()
+type cpuTemperatureConfig struct {
+	Path string
+}
+
+type cpuConfig struct {
+	pollerConfig `yaml:",inline"`
+	Entities     []string
+	Temperature  cpuTemperatureConfig
+}
+
+func newCPU(yamlCfg *yaml.Node) SyncCloser {
+	cfg := cpuConfig{
+		pollerConfig: pollerConfig{Period: "1m"},
+		Entities:     []string{"temperature", "used_percent"},
+		Temperature:  cpuTemperatureConfig{Path: "/sys/class/thermal/thermal_zone0/temp"},
+	}
+	err := yamlCfg.Decode(&cfg)
+	if err != nil {
+		log.Fatalf("error reading cpu config: %v", err)
+	}
 	entities := map[string]bool{}
-	for _, e := range cfg.MustGet("entities").StringSlice() {
+	for _, e := range cfg.Entities {
 		entities[e] = true
 	}
 	stats, err := cpuStats()
@@ -54,21 +63,21 @@ func newCPU(cfg *config.Config) SyncCloser {
 	}
 	cpu := cpu{entities: entities, stats: stats}
 	if entities["temperature"] {
-		tpath := cfg.MustGet("temperature.path").String()
+		tpath := cfg.Temperature.Path
 		temp, err := cpuTemp(tpath)
 		if err == nil {
 			cpu.temp = temp
 		}
 		cpu.tpath = tpath
 	}
-	cpu.poller = NewPoller(period, cpu.Refresh)
+	cpu.poller = NewPoller(&cfg.pollerConfig, cpu.Refresh)
 	return &cpu
 }
 
 func (c *cpu) Config() []EntityConfig {
 	var config []EntityConfig
 	if c.entities["used_percent"] {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":                "CPU used percent",
 			"state_topic":         "~/cpu",
 			"value_template":      "{{(100 - value_json.idle_percent) | round(2)}}",
@@ -78,7 +87,7 @@ func (c *cpu) Config() []EntityConfig {
 		config = append(config, EntityConfig{"used_percent", "sensor", cfg})
 	}
 	if c.entities["temperature"] {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":                "CPU temperature",
 			"state_topic":         "~/cpu",
 			"value_template":      "{{value_json.temperature | round(2) }}",
@@ -88,7 +97,7 @@ func (c *cpu) Config() []EntityConfig {
 		config = append(config, EntityConfig{"temperature", "sensor", cfg})
 	}
 	if c.entities["uptime"] {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":                "Uptime",
 			"state_topic":         "~/cpu",
 			"value_template":      "{{value_json.uptime | int }}",
@@ -121,11 +130,8 @@ func cpuStats() (CPUStats, error) {
 	if fields[0] != "cpu" || numFields < 8 {
 		return stats, errors.Errorf("bad cpu line: %v", scanner.Text())
 	}
-	numStats := numFields - 1
-	if numStats > len(stats) {
-		numStats = len(stats)
-	}
-	for i := 0; i < numStats; i++ {
+	numStats := min(numFields-1, len(stats))
+	for i := range numStats {
 		v, err := strconv.ParseUint(fields[i+1], 10, 64)
 		if err != nil {
 			return stats, err
@@ -190,7 +196,7 @@ func (c *cpu) Refresh(forced bool) {
 	}
 	d := CPUStats{}
 	total := uint64(0)
-	for i := 0; i < len(d); i++ {
+	for i := range len(d) {
 		d[i] = delta(c.stats[i], stats[i])
 		total += d[i]
 	}

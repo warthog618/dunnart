@@ -13,8 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/warthog618/config"
-	"github.com/warthog618/config/dict"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -25,15 +24,39 @@ type mounts struct {
 	mm []*mount
 }
 
-func newMounts(cfg *config.Config) SyncCloser {
-	defCfg := dict.New()
-	defCfg.Set("period", cfg.MustGet("period", config.WithDefaultValue("10m")).String())
+type fsMountPointConfig struct {
+	pollerConfig `yaml:",inline"`
+	Path         string
+}
+
+type fsConfig struct {
+	pollerConfig `yaml:",inline"`
+	Mountpoints  []string
+}
+
+func newMounts(yamlCfg *yaml.Node) SyncCloser {
+	cfg := fsConfig{pollerConfig: pollerConfig{Period: "10m"}}
+	// structured for fsConfig
+	err := yamlCfg.Decode(&cfg)
+	if err != nil {
+		log.Fatalf("error reading fs config: %v", err)
+	}
+	// unstructured for mountpoint config
+	mpCfg := make(map[string]yaml.Node)
+	err = yamlCfg.Decode(&mpCfg)
+	if err != nil {
+		log.Fatalf("error parsing fs mp config: %v", err)
+	}
+
 	mm := []*mount{}
-	mps := cfg.MustGet("mountpoints").StringSlice()
-	for _, name := range mps {
-		mCfg := cfg.GetConfig(name)
-		mCfg.Append(defCfg)
-		mm = append(mm, newMount(name, mCfg))
+	for _, name := range cfg.Mountpoints {
+		mCfg := fsMountPointConfig{pollerConfig: cfg.pollerConfig}
+		yCfg := mpCfg[name]
+		err := yCfg.Decode(&mCfg)
+		if err != nil {
+			log.Fatalf("error reading fs %s config: %v", name, err)
+		}
+		mm = append(mm, newMount(name, &mCfg))
 	}
 	return &mounts{mm: mm}
 }
@@ -71,13 +94,12 @@ type mount struct {
 	cfg     []EntityConfig
 }
 
-func newMount(name string, cfg *config.Config) *mount {
-	m := mount{name: name, path: cfg.MustGet("path").String()}
+func newMount(name string, cfg *fsMountPointConfig) *mount {
+	m := mount{name: name, path: cfg.Path}
 	m.topic = "/" + name
-	m.poller = NewPoller(cfg.MustGet("period").Duration(),
-		m.Refresh)
+	m.poller = NewPoller(&cfg.pollerConfig, m.Refresh)
 	mtopic := "~/fs" + m.topic
-	ecfg := map[string]interface{}{
+	ecfg := map[string]any{
 		"name":           "fs " + m.name,
 		"state_topic":    mtopic,
 		"value_template": "{{value_json.mounted | is_defined}}",
@@ -87,7 +109,7 @@ func newMount(name string, cfg *config.Config) *mount {
 		"payload_off":    "off",
 	}
 	m.cfg = append(m.cfg, EntityConfig{m.name, "binary_sensor", ecfg})
-	ecfg = map[string]interface{}{
+	ecfg = map[string]any{
 		"name":                "fs " + m.name + " used percent",
 		"state_topic":         mtopic,
 		"value_template":      "{{(value_json.used_percent) | round(2)}}",
@@ -116,7 +138,7 @@ func (m *mount) update() bool {
 	mounted := false
 	if err == nil {
 		r := bufio.NewReader(bytes.NewReader(out))
-		r.ReadLine()
+		_, _, _ = r.ReadLine()
 		line, _, err := r.ReadLine()
 		if err != nil {
 			log.Printf("error parsing df: %v", err)

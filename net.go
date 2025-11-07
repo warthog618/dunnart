@@ -6,13 +6,14 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/warthog618/config"
-	"github.com/warthog618/config/dict"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -23,27 +24,55 @@ type nets struct {
 	nn []*netIf
 }
 
-func newNets(cfg *config.Config) SyncCloser {
-	defCfg := dict.New()
-	defCfg.Set("period", "1m")
-	defCfg.Set("entities", []string{
-		"operstate",
-		"rx_bytes",
-		"tx_bytes",
-		"rx_throughput",
-		"tx_throughput",
-	},
-	)
-	cfg.Append(defCfg)
+type netConfig struct {
+	pollerConfig `yaml:",inline"`
+	Entities     []string
+	Interfaces   []string
+}
+
+type netIfConfig struct {
+	pollerConfig `yaml:",inline"`
+	Entities     []string
+	Link         pollerConfig
+	Stats        pollerConfig
+}
+
+func newNets(yamlCfg *yaml.Node) SyncCloser {
+	cfg := netConfig{
+		pollerConfig: pollerConfig{Period: "1m"},
+		Entities: []string{
+			"operstate",
+			"rx_bytes",
+			"tx_bytes",
+			"rx_throughput",
+			"tx_throughput",
+		},
+	}
+	// structured for netConfig
+	err := yamlCfg.Decode(&cfg)
+	if err != nil {
+		log.Fatalf("error reading net config: %v", err)
+	}
+	// unstructured for interface config
+	ifCfg := make(map[string]yaml.Node)
+	err = yamlCfg.Decode(&ifCfg)
+	if err != nil {
+		log.Fatalf("error parsing net if config: %v", err)
+	}
 	// mounts may inherit period and entities
-	mDefCfg := dict.New()
-	mDefCfg.Set("period", cfg.MustGet("period").String())
-	mDefCfg.Set("entities", cfg.MustGet("entities").StringSlice())
 	nn := []*netIf{}
-	for _, name := range cfg.MustGet("interfaces").StringSlice() {
-		mCfg := cfg.GetConfig(name)
-		mCfg.Append(mDefCfg)
-		nn = append(nn, newNetIf(name, mCfg))
+	for _, name := range cfg.Interfaces {
+		mCfg := netIfConfig{
+			pollerConfig: cfg.pollerConfig,
+			Entities:     cfg.Entities,
+		}
+		yCfg := ifCfg[name]
+		err := yCfg.Decode(&mCfg)
+		if err != nil {
+			log.Fatalf("error reading net %s config: %v", name, err)
+		}
+
+		nn = append(nn, newNetIf(name, &mCfg))
 	}
 	return &nets{nn: nn}
 }
@@ -254,27 +283,20 @@ var linkEntities = []string{
 	"carrier",
 }
 
-func ssContains(ss []string, name string) bool {
-	for _, s := range ss {
-		if s == name {
-			return true
-		}
-	}
-	return false
-}
-
-func newNetIf(name string, cfg *config.Config) *netIf {
-	defCfg := dict.New()
+func newNetIf(name string, cfg *netIfConfig) *netIf {
 	// link and stats may inherit period
-	defCfg.Set("link.period", cfg.MustGet("period").String())
-	defCfg.Set("stats.period", cfg.MustGet("period").String())
-	cfg.Append(defCfg)
+	if len(cfg.Link.Period) == 0 {
+		cfg.Link.Period = cfg.Period
+	}
+	if len(cfg.Stats.Period) == 0 {
+		cfg.Stats.Period = cfg.Period
+	}
 	se := map[string]bool{}
 	le := map[string]bool{}
-	for _, e := range cfg.MustGet("entities").StringSlice() {
-		if ssContains(statsEntities, e) {
+	for _, e := range cfg.Entities {
+		if slices.Contains(statsEntities, e) {
 			se[e] = true
-		} else if ssContains(linkEntities, e) {
+		} else if slices.Contains(linkEntities, e) {
 			le[e] = true
 		}
 	}
@@ -301,14 +323,14 @@ func newNetIf(name string, cfg *config.Config) *netIf {
 	if len(le) > 0 {
 		n.linkPoller = &PolledSensor{
 			topic:  "/" + name,
-			poller: NewPoller(cfg.MustGet("link.period").Duration(), n.RefreshLink),
+			poller: NewPoller(&cfg.Link, n.RefreshLink),
 			ps:     StubPubSub{},
 		}
 	}
 	if len(se) > 0 {
 		n.statsPoller = &PolledSensor{
 			topic:  "/" + name + "/stats",
-			poller: NewPoller(cfg.MustGet("stats.period").Duration(), n.RefreshStats),
+			poller: NewPoller(&cfg.Stats, n.RefreshStats),
 			ps:     StubPubSub{},
 		}
 	}
@@ -319,7 +341,7 @@ func (n *netIf) Config() []EntityConfig {
 	var config []EntityConfig
 	if n.linkPoller != nil {
 		if n.linkEntities["operstate"] {
-			cfg := map[string]interface{}{
+			cfg := map[string]any{
 				"name":           "net " + n.name,
 				"state_topic":    "~/net/" + n.name,
 				"value_template": "{{value_json.operstate | is_defined}}",
@@ -333,7 +355,7 @@ func (n *netIf) Config() []EntityConfig {
 			config = append(config, EntityConfig{n.name + "-operstate", "binary_sensor", cfg})
 		}
 		if n.linkEntities["carrier"] {
-			cfg := map[string]interface{}{
+			cfg := map[string]any{
 				"name":           "net " + n.name + " carrier",
 				"state_topic":    "~/net/" + n.name,
 				"value_template": "{{value_json.carrier | is_defined}}",
@@ -348,7 +370,7 @@ func (n *netIf) Config() []EntityConfig {
 		}
 	}
 	for e := range n.statsEntities {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name": fmt.Sprintf("net %s %s", n.name,
 				strings.ReplaceAll(e, "_", " ")),
 			"state_topic":    fmt.Sprintf("~/net/%s/stats", n.name),

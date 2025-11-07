@@ -31,8 +31,10 @@ modules: [cpu, mem, fs]
 
 fs:
   mountpoints: [root, home]
-  root.path: "/"
-  home.path: "/home"
+  root:
+    path: "/"
+  home:
+    path: "/home"
 
 mqtt:
   broker: tcp://<mqtt server>:1883
@@ -67,14 +69,13 @@ The basic steps:
 
 ## Configuration
 
-The top level of the configuration contains the modules being loaded, the global defaults for common configuration, the mqtt and home assistant configuration sections, and optionally the configuration for each of the modules.
+The top level of the configuration contains the modules being loaded, the mqtt and home assistant configuration sections, and optionally the configuration for each of the modules.
 
 Sections only need to be present to override default values, or where no default value is provided.
 
 |Field|Description|Default|
 |-----|------|:-----:|
 |modules|The modules to be loaded|-|
-|period|Globally override the period for polled sensors|None - set by modules|
 
 ### MQTT
 
@@ -99,7 +100,7 @@ The **dunnart** defaults correspond to the default HA configuration, in which ca
 
 |Field|Description|Default|
 |-----|------|:-----:|
-|birth_message_topic|The topic HA birth message topic|**homeassistant/status**|
+|birth_message_topic|The HA birth message topic|**homeassistant/status**|
 |discovery.prefix|The prefix for the topics to publish sensor config messages|**homeassistant**|
 |discovery.node_id|The name of the device that the MQTT integration will add to HA and that the entities will be assigned to.|*hostname*|
 |discovery.mac_source|A list of interfaces to use to provide a unique MAC address to identify this host device.  The first active listed interface is used.  This setting is ignored if *mac* is set. |[eth0, enu1u1, enp3s0, wlan0]|
@@ -161,6 +162,8 @@ Supported entities:
 |interfaces|The list of interfaces to monitor|-|
 |*interface*.entities|The network interface sensors to expose for this interface|net.entities|
 |*interface*.period|The polling period for the sensors on this interface|net.period|
+|*interface*.link.period|The polling period for the link sensors on this interface|*interface*.period|
+|*interface*.stats.period|The polling period for the statistics sensors on this interface|*interface*.period|
 
 For a particular host, the interfaces available are listed in `/sys/class/net`.
 
@@ -184,7 +187,7 @@ Supported entities:
 |entities|The system info sensors to expose|[kernel_release, os_release]|
 |period|The polling period for the system info sensors|6h|
 
-The info is drawn from `apt`, `checkupdates`, `uname` and `/etc/os-release`.
+The info is drawn from `apt`, `checkupdates` (from pacman-contrib), `uname` and `/etc/os-release`.
 
 Supported entities:
 
@@ -196,7 +199,7 @@ Supported entities:
 - machine (uname -m)
 - os_name (/etc/os-release NAME)
 - os_release (/etc/os-release PRETTY_NAME)
-- os_version (/etc/os-release/VERSION)
+- os_version (/etc/os-release VERSION)
 - pacman_status (pacman upgrades are available)
 
 #### WAN
@@ -262,8 +265,10 @@ Sensors may also be requested to update on demand via MQTT - publish a message t
 
 ## Roadmap
 
+Considering switching from MQTT to ESPHome API to remove the need for a MQTT broker.
+
 Additional modules under consideration:
 
 - GPIO (input pins as sensors, output pins as switches)
-- RPi Power
-- Exec (execute an arbitrary command on the remote host)
+
+

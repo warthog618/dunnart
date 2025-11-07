@@ -12,8 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/warthog618/config"
-	"github.com/warthog618/config/dict"
+	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -30,25 +29,30 @@ type mem struct {
 	msg   string
 }
 
-func newMem(cfg *config.Config) SyncCloser {
-	defCfg := dict.New()
-	defCfg.Set("period", "1m")
-	defCfg.Set("entities", []string{
-		"ram_used_percent",
-		"swap_used_percent",
-	})
-	cfg.Append(defCfg)
+type memConfig struct {
+	pollerConfig `yaml:",inline"`
+	Entities     []string
+}
+
+func newMem(yamlCfg *yaml.Node) SyncCloser {
+	cfg := memConfig{
+		pollerConfig: pollerConfig{Period: "1m"},
+		Entities:     []string{"ram_used_percent", "swap_used_percent"},
+	}
+	err := yamlCfg.Decode(&cfg)
+	if err != nil {
+		log.Fatalf("error reading mem config: %v", err)
+	}
 	entities := map[string]bool{}
-	for _, e := range cfg.MustGet("entities").StringSlice() {
+	for _, e := range cfg.Entities {
 		entities[e] = true
 	}
-	period := cfg.MustGet("period").Duration()
 	stats, err := newMemStats(entities)
 	if err != nil {
 		log.Fatalf("unable to read mem stats: %v", err)
 	}
 	m := mem{entities: entities, stats: stats}
-	m.poller = NewPoller(period, m.Refresh)
+	m.poller = NewPoller(&cfg.pollerConfig, m.Refresh)
 	return &m
 }
 
@@ -65,11 +69,12 @@ func newMemStats(fields map[string]bool) (memStats, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		for i := 0; i < len(stats); i++ {
+		for i := range len(stats) {
 			if strings.HasPrefix(line, names[i]) {
 				fields := strings.Fields(line)
 				v, err := strconv.ParseUint(fields[1], 10, 64)
 				if err != nil {
+
 					continue
 				}
 				stats[i] = v
@@ -89,7 +94,7 @@ func newMemStats(fields map[string]bool) (memStats, error) {
 func (m *mem) Config() []EntityConfig {
 	var config []EntityConfig
 	if m.entities["ram_used_percent"] {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":                "RAM used percent",
 			"state_topic":         "~/mem",
 			"value_template":      "{{value_json.ram_used_percent | is_defined}}",
@@ -99,7 +104,7 @@ func (m *mem) Config() []EntityConfig {
 		config = append(config, EntityConfig{"ram_used_percent", "sensor", cfg})
 	}
 	if m.entities["swap_used_percent"] {
-		cfg := map[string]interface{}{
+		cfg := map[string]any{
 			"name":                "swap used percent",
 			"state_topic":         "~/mem",
 			"value_template":      "{{value_json.swap_used_percent | is_defined}}",
