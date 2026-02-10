@@ -59,7 +59,7 @@ func newNets(yamlCfg *yaml.Node) SyncCloser {
 	if err != nil {
 		log.Fatalf("error parsing net if config: %v", err)
 	}
-	// mounts may inherit period and entities
+	// interfaces may inherit period and entities
 	nn := []*netIf{}
 	for _, name := range cfg.Interfaces {
 		mCfg := netIfConfig{
