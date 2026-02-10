@@ -307,7 +307,7 @@ func newDiscovery(cfg *discoveryConfig, ss map[string]Syncer, baseTopic string) 
 							"config"},
 						"/")
 					baseCfg["unique_id"] = euid
-					baseCfg["object_id"] = strings.Join([]string{cfg.NodeID, modName, entity.name}, "_")
+					baseCfg["default_entity_id"] = entity.class + "." + strings.Join([]string{cfg.NodeID, modName, entity.name}, "_")
 					config := normaliseConfig(entity.config, baseCfg)
 					config = strings.ReplaceAll(config, "{{.NodeID}}", cfg.NodeID)
 					ents[topic] = config
