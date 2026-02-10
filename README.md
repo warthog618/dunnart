@@ -141,16 +141,20 @@ Supported entities:
 
 |Field|Description|Default|
 |-----|------|:-----:|
+|entities|The fs sensors to expose for each mount point|[mounted, used_percent]|
 |period|The polling period for the mount point sensors|10m|
 |mountpoints|The list of mount points to monitor|-|
+|*mountpoint*.entities|The fs sensors to expose for this mount point|fs.entities|
 |*mountpoint*.path|The path of the mount point|-|
-|*mountpoint*.period|The polling period for the sensors on this interface|fs.period|
+|*mountpoint*.period|The polling period for the sensors on this mount point|fs.period|
 
 For a particular host, the mount points available are listed by `mount`.
 
 Supported entities:
 
 - mounted
+- total_bytes
+- used_bytes
 - used_percent
 
 #### Network Interface (net)
