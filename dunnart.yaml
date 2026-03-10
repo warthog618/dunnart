@@ -46,7 +46,8 @@ cmd:
 fs:
   mountpoints: [root, home]
 #  period: 10m
-  root.path: "/"
+  root:
+    path: "/"
   home:
     path: "/home"
 
