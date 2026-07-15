@@ -128,7 +128,7 @@ func osRelease() (map[string]string, error) {
 }
 
 func aptPackagesUpgradable() (int, error) {
-	cmd := exec.Command("apt", "-qq", "list", "--upgradable")
+	cmd := exec.Command("apt", "list", "--upgradable", "-qq")
 	cmd.Stderr = nil
 	v, err := cmd.Output()
 	if err == nil {
